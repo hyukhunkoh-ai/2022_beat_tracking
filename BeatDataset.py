@@ -2,6 +2,7 @@ import torch
 import os
 import librosa
 import julius
+import torchaudio
 from torch.utils.data import Dataset
 from glob import glob
 class BeatDataset():
@@ -43,7 +44,7 @@ class BeatDataset():
         audio /= audio.abs().max() # normalize
         
         # sampling control
-        if sr != self.audio_sample_rate:
+        if sr != self.sr:
             audio = julius.resample_frac(audio, sr, self.sr)
         
         with open(self.label[idx],'r',encoding='utf-8') as f:
