@@ -1,4 +1,3 @@
-%%writefile BeatDataset.py
 import torch
 import os
 import librosa
@@ -45,7 +44,7 @@ class BeatDataset():
         
         # sampling control
         if sr != self.audio_sample_rate:
-            audio = julius.resample_frac(audio, sr, self.audio_sample_rate)
+            audio = julius.resample_frac(audio, sr, self.sr)
         
         with open(self.label[idx],'r',encoding='utf-8') as f:
             beats = f.read().strip().split('\n')
@@ -55,9 +54,9 @@ class BeatDataset():
             beat_downbeat = list(map(str.split(),beats))
             downbeats = [float(beat) for beat,order in beat_downbeat if int(order) == 1]
             beats = [float(beat) for beat,_ in beat_downbeat]
-            return wav,beats,downbeats
+            return audio,beats,downbeats
         else:
-            return wav,beats
+            return audio,beats
 
                 
                 
