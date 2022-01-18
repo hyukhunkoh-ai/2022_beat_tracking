@@ -1,10 +1,12 @@
+%%writefile BeatDataset.py
 import torch
 import os
 import librosa
+import julius
 from torch.utils.data import Dataset
 from glob import glob
-class BeatDataset(Dataset):
-    def __init__(self,datapath,sr=None,downbeat=False):
+class BeatDataset():
+    def __init__(self,datapath,sr=44100,downbeat=False):
         '''
         --datapath
             -- dataname
@@ -37,7 +39,13 @@ class BeatDataset(Dataset):
     
     
     def __getitem__(self,idx):
-        wav,_ = librosa.load(self.data[idx],sr=self.sr)
+        audio, sr = torchaudio.load(self.data[idx])
+        audio = audio.float()
+        audio /= audio.abs().max() # normalize
+        
+        # sampling control
+        if sr != self.audio_sample_rate:
+            audio = julius.resample_frac(audio, sr, self.audio_sample_rate)
         
         with open(self.label[idx],'r',encoding='utf-8') as f:
             beats = f.read().strip().split('\n')
