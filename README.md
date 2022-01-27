@@ -3,7 +3,7 @@
 ```
 pip install julius
 pip install transformers
-pip install pytube
+pip install pydub
 pip install ffmpeg
 # 환경변수 추가
 ```
