@@ -5,6 +5,7 @@ pip install julius
 pip install transformers
 pip install pydub
 pip install ffmpeg
+pip install efficientnet_pytorch
 # 환경변수 추가
 ```
 
