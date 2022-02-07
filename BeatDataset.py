@@ -141,7 +141,7 @@ class ContrastiveDataset(Dataset):
 
 
     def random_crop(self,item):
-        crop_size = self.sequence_len * self.sr
+        crop_size = int(self.sequence_len * self.sr)
         start = int(random.random() * (item.shape[0] - crop_size))
         return item[start:(start+crop_size)]
 
