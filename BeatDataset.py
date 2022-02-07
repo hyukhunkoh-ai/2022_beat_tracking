@@ -121,8 +121,9 @@ class ContrastiveDataset(Dataset):
 
 
 
-    def __getitem__(self, item,transform=False):
-        y, sr = librosa.load(item)
+
+    def __getitem__(self, idx,transform=False):
+        y, sr = librosa.load(self.data[idx])
         # tempo = self.get_tempo(y,sr)
         x1 = self.random_crop(y)
         x2 = self.random_crop(y)
@@ -131,6 +132,7 @@ class ContrastiveDataset(Dataset):
             x2 = self.augment(x2)
 
         return x1,x2
+
 
     def get_tempo(self,item,sr):
         onset_env = librosa.onset.onset_strength(item, sr=sr)
