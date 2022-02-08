@@ -4,4 +4,4 @@ datapth = "C:/Users/hyukh/Desktop/robot_extract/2022_beat_tracking/datapath/sima
 
 trdata = ContrastiveDataset(datapth)
 
-print(trdata.data)
+print(trdata[0].shape)
