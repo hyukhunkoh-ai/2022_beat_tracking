@@ -125,6 +125,8 @@ class SelfAttention(Module):
                 f"The expected input shape is (batch, sequence, embed_dim=={self.embed_dim}). "
                 f"Found {x.shape}."
             )
+
+            
         batch_size, length, embed_dim = x.size()
         if attention_mask is not None:
             shape_ = (batch_size, 1, length, length)
@@ -291,7 +293,6 @@ class Encoder(Module):
             features: Tensor,
             lengths: Optional[Tensor] = None,
     ) -> Tensor:
-        # x = self.feature_projection(features)
         x = features
 
         mask: Optional[Tensor] = None
@@ -311,7 +312,7 @@ class Encoder(Module):
 
 
 def get_encoder(
-        embed_dim: int,
+        
         pos_conv_kernel: int,
         pos_conv_groups: int,
         num_heads: int,
@@ -321,7 +322,7 @@ def get_encoder(
         dropout: float,
         layer_norm_first: bool,
         layer_drop: float,
-        num_out: int,
+        embed_dim: int=256,
 ) -> Encoder:
     """
     Args:
@@ -376,10 +377,7 @@ def get_encoder(
             Probability to drop each encoder layer during training.
             This option corresponds to "layerdrop" from fairseq.
             Expected values are 0.1 for both Base and Large arch.
-        num_out (int):
-            The dimension of the output. The number of labels.
     """
-    # feature_projection = FeatureProjection(in_features, embed_dim, dropout_input) # convolution blocks to transformer
     pos_conv = ConvolutionalPositionalEmbedding(embed_dim, pos_conv_kernel, pos_conv_groups) #CPE : 768
 
     
