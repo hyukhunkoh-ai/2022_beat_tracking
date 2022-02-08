@@ -1,5 +1,30 @@
 import torch
+import torch.nn as nn
 from argparse import ArgumentParser
+'''
+>>> torch.Size([32])
+    # 1d: [batch_size] 
+    # use for target labels or predictions.
+>>> torch.Size([12, 256])
+    # 2d: [batch_size, num_features (aka: C * H * W)]
+    # use for nn.Linear() input.
+>>> torch.Size([10, 1, 2048])
+    # 3d: [batch_size, channels, num_features (aka: H * W)]
+    # when used as nn.Conv1d() input.
+    # (but [seq_len, batch_size, num_features]
+    # if feeding an RNN).
+>>> torch.Size([16, 3, 28, 28])
+    # 4d: [batch_size, channels, height, width]
+    # use for nn.Conv2d() input.
+>>>  torch.Size([32, 1, 5, 15, 15])
+    # 5D: [batch_size, channels, depth, height, width]
+    # use for nn.Conv3d() input.
+
+
+'''
+
+
+
 
 def get_activation(act_type,ch=None):
     """ Helper function to construct activation functions by a string.
@@ -75,7 +100,7 @@ class dsTCNBlock(torch.nn.Module):
         return x + x_res
 
 
-class dsTCNModel():
+class TcnModel(nn.Module):
     """ Downsampling Temporal convolutional network.
         Args:
             ninputs (int): Number of input channels (mono = 1, stereo 2). Default: 1
@@ -103,12 +128,12 @@ class dsTCNModel():
                  norm_type='BatchNorm',
                  act_type='PReLU',
                  **kwargs):
-        super(dsTCNModel, self).__init__()
+        super(TcnModel, self).__init__()
 
         self.blocks = torch.nn.ModuleList()
         for n in range(nblocks):
             in_ch = ninputs if n == 0 else out_ch
-            out_ch = channel_width if n == 0 else in_ch + channel_growth
+            out_ch = channel_width if n == 0 else in_ch + channel_width
             dilation = dilation_growth ** (n % stack_size)
 
             self.blocks.append(dsTCNBlock(
@@ -124,8 +149,9 @@ class dsTCNModel():
     def forward(self, x):
 
         for block in self.blocks:
+            # print(x.shape)
             x = block(x)
 
 
-
+        # output == None,256,1103 if input == None,1,282240(12.8 second)
         return x
