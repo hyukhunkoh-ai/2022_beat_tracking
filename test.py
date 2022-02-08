@@ -1,7 +1,8 @@
 from BeatDataset import ContrastiveDataset
-datapth = "C:/Users/hyukh/Desktop/robot_extract/2022_beat_tracking/datapath/simac"
+datapth = "./datapath/simac"
 
 
 trdata = ContrastiveDataset(datapth)
 
-print(trdata[0].shape)
+
+print(trdata[0][0].shape)

@@ -121,15 +121,11 @@ class dsTCNModel():
                 act_type
             ))
 
-        self.output = torch.nn.Conv1d(out_ch,
-                                      noutputs,
-                                      kernel_size=1)
-
     def forward(self, x):
 
         for block in self.blocks:
             x = block(x)
 
-        x = self.output(x)
+
 
         return x
