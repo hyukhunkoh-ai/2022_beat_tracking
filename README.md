@@ -13,3 +13,11 @@ pip install efficientnet_pytorch
 
 
 > https://aeolian-duckling-46a.notion.site/robot_beat-dd028b6aec2b4c489e3bbab09216b38f
+
+
+
+## paper reference
+```
+https://arxiv.org/abs/2110.01436
+
+```
