@@ -52,7 +52,12 @@ class BeatDataset():
         audio, sr = torchaudio.load(self.data[idx])
         audio = audio.float()
         audio /= audio.abs().max() # normalize
-        
+        anot = ''
+        '''
+        ToDo
+        random crop 적용
+        anot 가공
+        '''
         # sampling control
         if sr != self.sr:
             audio = julius.resample_frac(audio, sr, self.sr)
@@ -61,15 +66,17 @@ class BeatDataset():
             beats = f.read().strip().split('\n')
             if '' in beats:
                 beats.remove('')
-        if self.downbeat:
-            beat_downbeat = list(map(str.split(),beats))
-            downbeats = [float(beat) for beat,order in beat_downbeat if int(order) == 1]
-            beats = [float(beat) for beat,_ in beat_downbeat]
-            return audio,beats,downbeats
-        else:
-            return audio,beats
-
-
+        
+        beat_downbeat = list(map(str.split(),beats))
+        downbeats = torch.tensor([1 if beat == 1 else 0 for beat in beats_by_type])
+        
+        return audio,beats,downbeats
+        
+    def random_crop(self,item):
+        crop_size = int(self.sequence_len * self.sr)
+        start = int(random.random() * (item.shape[0] - crop_size))
+        return item[start:(start+crop_size)]
+        
 transforms_polarity = 0.8
 transforms_noise = 0.01
 transforms_gain = 0.3
