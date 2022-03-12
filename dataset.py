@@ -16,7 +16,7 @@ from torchaudio_augmentations import *
 
 
 class BeatDataset():
-    def __init__(self,datapath,sr=44100,downbeat=False):
+    def __init__(self, path, sr=44100):
         '''
         --datapath
             -- dataname
@@ -29,20 +29,9 @@ class BeatDataset():
         self.data = []
         self.label = []
         self.sr = sr
-        self.downbeat= downbeat
-        
-        
-        with os.scandir(datapath) as fs:
-            for f in fs:
-                if f.is_dir():
-                    data = os.path.join(f.path,'data','*.wav')
-                    label = os.path.join(f.path,'label','*.txt')
-                    beats = os.path.join(f.path,'label','*.beats')
-                    self.data += list(glob(data))
-                    self.label += list(glob(label))
-                    self.label += list(glob(beats))
-    
-    
+
+        self.data += list(glob(os.path.join(path, 'data', '*.wav')))
+        self.label += list(glob(os.path.join(path, 'label', '*.beats')))
     
     def __len__(self):
         return len(self.label)
