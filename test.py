@@ -1,4 +1,4 @@
-from BeatDataset import ContrastiveDataset
+from dataset import ContrastiveDataset
 from tcn import TcnModel
 import torch
 datapth = "./datapath/simac"
