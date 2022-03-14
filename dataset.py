@@ -36,8 +36,7 @@ class BeatDataset():
     def __len__(self):
         return len(self.label)
     
-    
-    def __getitem__(self,idx):
+    def __getitem__(self, idx):
         audio, sr = torchaudio.load(self.data[idx])
         audio = audio.float()
         audio /= audio.abs().max() # normalize
@@ -51,15 +50,38 @@ class BeatDataset():
         if sr != self.sr:
             audio = julius.resample_frac(audio, sr, self.sr)
         
-        with open(self.label[idx],'r',encoding='utf-8') as f:
-            beats = f.read().strip().split('\n')
-            if '' in beats:
-                beats.remove('')
-        
-        beat_downbeat = list(map(str.split(),beats))
-        downbeats = torch.tensor([1 if beat == 1 else 0 for beat in beats_by_type])
-        
-        return audio,beats,downbeats
+        beat_indices = []
+        normalized_beat_times = []
+        beats_by_type = []
+
+        filename = self.label[idx]
+        start_time = 0
+
+        with open(filename, 'r') as fp:
+            for line in fp.readlines():
+                time_in_seconds, beat_number = line.strip('\n').replace('\t', ' ').split(' ')
+                time_in_seconds = float(time_in_seconds)
+                beat_number = int(beat_number)
+
+                offset_time = time_in_seconds - start_time
+
+                # 지금 한 오디오 파일로부터 12.8초 짜리만 쓴다.
+                # 나중에 한 파일로부터 int(audio_length / 12.8) 개를 짤라 쓸 예정
+                if offset_time < 0:
+                    continue
+
+                if offset_time > 12.8:
+                    break
+
+                beat_index = int(offset_time*100)
+                normalized_beat_time = offset_time/12.8
+                beat_type = 1 if beat_number == 1 else 0
+
+                beat_indices.append(beat_index)
+                normalized_beat_times.append(normalized_beat_time)
+                beats_by_type.append(beat_type)
+
+        return audio, beat_indices, normalized_beat_times, beats_by_type
         
     def random_crop(self,item):
         crop_size = int(self.sequence_len * self.sr)

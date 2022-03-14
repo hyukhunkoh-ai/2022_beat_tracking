@@ -25,7 +25,7 @@ train_dataset_list = torch.utils.data.ConcatDataset(train_datasets)
 train_dataloader = torch.utils.data.DataLoader(train_dataset_list,
                                             shuffle=True,
                                             batch_size=16,
-                                            num_workers=24,
+                                            num_workers=0,
                                             pin_memory=True)
 
 dict_args = vars(args)
@@ -34,7 +34,6 @@ optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 criterion = torch.nn.CrossEntropyLoss()
 for epoch in range(args.epochs):
     running_loss = 0.0
-
     for index, data in enumerate(train_dataloader, 0):
         inputs, targets = data
         optimizer.zero_grad()
