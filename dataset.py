@@ -12,9 +12,6 @@ from torchaudio_augmentations import *
 # 왈츠는 30 BPM, 퀵스텝 50, 폭스트로트 30, 탱고 33/34이 표준으로 되어 있다. 소셜 리듬댄스는 26/50으로 폭이 넓다.
 # 그만큼 소셜 리듬댄스는 웬만한 음악이면 다 가능하다는 뜻도 된다. 그래서 편안한 파티용으로 많이 쓴다.
 
-
-
-
 class BeatDataset():
     def __init__(self, path, audio_length=12.8, sr=44100):
         '''
@@ -27,12 +24,12 @@ class BeatDataset():
                     -- *.beats
         '''
         self.data = []
-        self.label = []
+        self.label = list(glob(os.path.join(path, 'label', '*.beats')))
         self.audio_length = audio_length
         self.sr = sr
 
-        self.data += list(glob(os.path.join(path, 'data', '*.wav')))
-        self.label += list(glob(os.path.join(path, 'label', '*.beats')))
+        self.label = filter_data(self.label)
+        self.data = [(label[:-6] + ".wav").replace("label", "data") for label in self.label]
     
     def __len__(self):
         return len(self.label)
@@ -93,7 +90,8 @@ class BeatDataset():
         annotations = {
             "beat_indices": beat_indices,
             "normalized_beat_times": normalized_beat_times,
-            "beats_by_type": beats_by_type
+            "beats_by_type": beats_by_type,
+            "filename": filename
         }
 
         return audio, target, annotations
@@ -102,7 +100,20 @@ class BeatDataset():
         crop_size = int(self.sequence_len * self.sr)
         start = int(random.random() * (item.shape[0] - crop_size))
         return item[start:(start+crop_size)]
-        
+
+def filter_data(paths):
+    new_paths = []
+    for path in paths:
+        with open(path, 'r') as fp:
+            first_line = fp.readlines()[0]
+            time_in_seconds, beat_number = first_line.strip('\n').replace('\t', ' ').split(' ')
+            time_in_seconds = float(time_in_seconds)
+            if time_in_seconds < 2:
+                new_paths.append(path)
+
+    return new_paths
+
+
 transforms_polarity = 0.8
 transforms_noise = 0.01
 transforms_gain = 0.3
