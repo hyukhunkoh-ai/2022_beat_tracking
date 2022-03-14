@@ -16,7 +16,7 @@ from torchaudio_augmentations import *
 
 
 class BeatDataset():
-    def __init__(self, path, sr=44100):
+    def __init__(self, path, audio_length=12.8, sr=44100):
         '''
         --datapath
             -- dataname
@@ -28,6 +28,7 @@ class BeatDataset():
         '''
         self.data = []
         self.label = []
+        self.audio_length = audio_length
         self.sr = sr
 
         self.data += list(glob(os.path.join(path, 'data', '*.wav')))
@@ -37,7 +38,10 @@ class BeatDataset():
         return len(self.label)
     
     def __getitem__(self, idx):
+        num_audio_samples = int(self.audio_length*self.sr)
         audio, sr = torchaudio.load(self.data[idx])
+        target = torch.zeros(1, int(self.audio_length*100))
+
         audio = audio.float()
         audio /= audio.abs().max() # normalize
         anot = ''
@@ -46,6 +50,12 @@ class BeatDataset():
         random crop 적용
         anot 가공
         '''
+
+        if audio.size(dim=1) < num_audio_samples:
+            audio = torch.nn.ConstantPad1d((0, num_audio_samples - audio.size(dim=1)), 0)(audio)
+        elif audio.size(dim=1) > num_audio_samples:
+            audio = audio.narrow(1, 0, num_audio_samples)
+
         # sampling control
         if sr != self.sr:
             audio = julius.resample_frac(audio, sr, self.sr)
@@ -66,22 +76,27 @@ class BeatDataset():
                 offset_time = time_in_seconds - start_time
 
                 # 지금 한 오디오 파일로부터 12.8초 짜리만 쓴다.
-                # 나중에 한 파일로부터 int(audio_length / 12.8) 개를 짤라 쓸 예정
                 if offset_time < 0:
                     continue
 
-                if offset_time > 12.8:
+                if offset_time > self.audio_length:
                     break
 
                 beat_index = int(offset_time*100)
-                normalized_beat_time = offset_time/12.8
+                normalized_beat_time = offset_time/self.audio_length
                 beat_type = 1 if beat_number == 1 else 0
 
                 beat_indices.append(beat_index)
                 normalized_beat_times.append(normalized_beat_time)
                 beats_by_type.append(beat_type)
 
-        return audio, beat_indices, normalized_beat_times, beats_by_type
+        annotations = {
+            "beat_indices": beat_indices,
+            "normalized_beat_times": normalized_beat_times,
+            "beats_by_type": beats_by_type
+        }
+
+        return audio, target, annotations
         
     def random_crop(self,item):
         crop_size = int(self.sequence_len * self.sr)
