@@ -34,13 +34,6 @@ def make_batch(samples):
     normalized_beat_times_list = [torch.nn.ConstantPad1d((0, desired_length - len(normalized_beat_times)), 0)(normalized_beat_times) for normalized_beat_times in normalized_beat_times_list]
     beats_by_type_list = [torch.nn.ConstantPad1d((0, desired_length - len(beats_by_type)), 0)(beats_by_type) for beats_by_type in beats_by_type_list]
 
-    #beat_indices = torch.stack(beat_indices)
-
-    #print(torch.Tensor(beat_indices).shape)
-    #beat_indices = torch.nn.utils.rnn.pad_sequence(beat_indices, batch_first=True)
-    #normalized_beat_times = torch.nn.utils.rnn.pad_sequence(normalized_beat_times, batch_first=True)
-    #beats_by_type = torch.nn.utils.rnn.pad_sequence(beats_by_type, batch_first=True)
-
     new_annotations = {
         'beat_indices': beat_indices_list,
         'normalized_beat_times': normalized_beat_times_list,
@@ -65,7 +58,6 @@ for epoch in range(args.epochs):
     running_loss = 0.0
     for index, data in enumerate(train_dataloader, 0):
         inputs, targets, annotations = data
-        print(inputs)
         optimizer.zero_grad()
         outputs = model(inputs)
         loss = criterion(outputs, targets)

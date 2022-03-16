@@ -37,7 +37,7 @@ class BeatDataset():
     def __getitem__(self, idx):
         num_audio_samples = int(self.audio_length*self.sr)
         audio, sr = torchaudio.load(self.data[idx])
-        target = torch.zeros(1, int(self.audio_length*100))
+        target = torch.zeros(int(self.audio_length*100))
 
         audio = audio.float()
         audio /= audio.abs().max() # normalize
@@ -79,13 +79,15 @@ class BeatDataset():
                 if offset_time > self.audio_length:
                     break
 
-                beat_index = int(offset_time*100)
+                beat_index = int(offset_time*100) - 1
                 normalized_beat_time = offset_time/self.audio_length
                 beat_type = 1 if beat_number == 1 else 0
 
                 beat_indices.append(beat_index)
                 normalized_beat_times.append(normalized_beat_time)
                 beats_by_type.append(beat_type)
+
+                target[beat_index] = 1
 
         annotations = {
             "beat_indices": beat_indices,
