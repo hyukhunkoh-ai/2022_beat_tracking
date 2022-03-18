@@ -2,7 +2,7 @@ import torch
 from argparse import ArgumentParser
 
 from dataset import BeatDataset
-from models import TcnModel
+from models import TcnModel, RegressionModel, ClassificationModel
 
 parser = ArgumentParser()
 parser.add_argument('--ballroom_dir', type=str, default='./datapath/ballroom')
@@ -34,13 +34,13 @@ def make_batch(samples):
     normalized_beat_times_list = [torch.nn.ConstantPad1d((0, desired_length - len(normalized_beat_times)), 0)(normalized_beat_times) for normalized_beat_times in normalized_beat_times_list]
     beats_by_type_list = [torch.nn.ConstantPad1d((0, desired_length - len(beats_by_type)), 0)(beats_by_type) for beats_by_type in beats_by_type_list]
 
-    new_annotations = {
+    annotations = {
         'beat_indices': beat_indices_list,
         'normalized_beat_times': normalized_beat_times_list,
         'beats_by_type': beats_by_type_list,
     }
 
-    return audio_list, target_list, new_annotations
+    return audio_list, target_list, annotations
 
 train_dataset_list = torch.utils.data.ConcatDataset(train_datasets)
 train_dataloader = torch.utils.data.DataLoader(train_dataset_list,
@@ -51,19 +51,29 @@ train_dataloader = torch.utils.data.DataLoader(train_dataset_list,
                                             collate_fn=make_batch)
 
 dict_args = vars(args)
+
 model = TcnModel(**dict_args)
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-criterion = torch.nn.CrossEntropyLoss()
+
+regressionModel = RegressionModel(256)
+classificationModel = ClassificationModel(256)
+focalLoss = FocalLoss()
+
 for epoch in range(args.epochs):
     running_loss = 0.0
     for index, data in enumerate(train_dataloader, 0):
         inputs, targets, annotations = data
         optimizer.zero_grad()
         outputs = model(inputs)
-        loss = criterion(outputs, targets)
-        loss.backward()
+
+        regression = regressionModel(outputs)
+        classification = classificationModel(outputs)
+
+        loss = focalLoss(classification, regression, annotations)
+
         optimizer.step()
-        running_loss += loss.item()
+        #running_loss += loss.item()
+        print("aaa")
         if index % 2000 == 1999:
             print(f'[{epoch + 1}, {index + 1:5d}] loss: {running_loss / 2000:.3f}')
             running_loss = 0.0
