@@ -3,6 +3,8 @@ from argparse import ArgumentParser
 
 from dataset import BeatDataset
 from models import TcnModel, RegressionModel, ClassificationModel
+from anchors import Anchors
+from loss import FocalLoss
 
 parser = ArgumentParser()
 parser.add_argument('--ballroom_dir', type=str, default='./datapath/ballroom')
@@ -18,29 +20,19 @@ for dataset_type in dataset_types:
     if dataset_type == "ballroom" and args.ballroom_dir is not None:
         audio_dir = args.ballroom_dir
 
-    train_datasets.append(BeatDataset(audio_dir))
+    dataset = BeatDataset(audio_dir)
+    train_datasets.append(dataset)
 
 def make_batch(samples):
     audio_list = torch.stack([sample[0] for sample in samples])
-    target_list = torch.stack([sample[1] for sample in samples])
+    batch_size = len(audio_list)
 
-    beat_indices_list = [torch.Tensor(sample[2]['beat_indices']) for sample in samples]
-    normalized_beat_times_list = [torch.Tensor(sample[2]['normalized_beat_times']) for sample in samples]
-    beats_by_type_list = [torch.Tensor(sample[2]['beats_by_type']) for sample in samples]
+    desired_length = max([len(sample[1]) for sample in samples])
+    padded_data = torch.zeros(batch_size, desired_length, 3)
+    for index in range(batch_size):
+        padded_data[index, :len(samples[index][1]), :] = torch.Tensor(samples[index][1])
 
-    desired_length = len(list(sorted(beat_indices_list, key=len))[-1])
-
-    beat_indices_list = [torch.nn.ConstantPad1d((0, desired_length - len(beat_indices)), 0)(beat_indices) for beat_indices in beat_indices_list]
-    normalized_beat_times_list = [torch.nn.ConstantPad1d((0, desired_length - len(normalized_beat_times)), 0)(normalized_beat_times) for normalized_beat_times in normalized_beat_times_list]
-    beats_by_type_list = [torch.nn.ConstantPad1d((0, desired_length - len(beats_by_type)), 0)(beats_by_type) for beats_by_type in beats_by_type_list]
-
-    annotations = {
-        'beat_indices': beat_indices_list,
-        'normalized_beat_times': normalized_beat_times_list,
-        'beats_by_type': beats_by_type_list,
-    }
-
-    return audio_list, target_list, annotations
+    return audio_list, padded_data
 
 train_dataset_list = torch.utils.data.ConcatDataset(train_datasets)
 train_dataloader = torch.utils.data.DataLoader(train_dataset_list,
@@ -57,19 +49,20 @@ optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
 regressionModel = RegressionModel(256)
 classificationModel = ClassificationModel(256)
+anchorsModel = Anchors(audio_length=12.8, sr=22050, num_anchors=1280)
 focalLoss = FocalLoss()
 
 for epoch in range(args.epochs):
     running_loss = 0.0
     for index, data in enumerate(train_dataloader, 0):
-        inputs, targets, annotations = data
+        inputs, annotations = data
         optimizer.zero_grad()
         outputs = model(inputs)
 
         regression = regressionModel(outputs)
         classification = classificationModel(outputs)
-
-        loss = focalLoss(classification, regression, annotations)
+        anchors = anchorsModel(inputs)
+        loss = focalLoss(classification, regression, anchors, annotations)
 
         optimizer.step()
         #running_loss += loss.item()

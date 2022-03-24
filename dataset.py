@@ -13,7 +13,7 @@ from torchaudio_augmentations import *
 # 그만큼 소셜 리듬댄스는 웬만한 음악이면 다 가능하다는 뜻도 된다. 그래서 편안한 파티용으로 많이 쓴다.
 
 class BeatDataset():
-    def __init__(self, path, audio_length=12.8, sr=44100):
+    def __init__(self, path, audio_length=12.8, sr=22050):
         '''
         --datapath
             -- dataname
@@ -27,9 +27,11 @@ class BeatDataset():
         self.label = list(glob(os.path.join(path, 'label', '*.beats')))
         self.audio_length = audio_length
         self.sr = sr
+        self.data = []
 
-        self.label = filter_data(self.label)
-        self.data = [(label[:-6] + ".wav").replace("label", "data") for label in self.label]
+        with open(os.path.join(path, 'new_data.txt'), 'r') as fp:
+            for line in fp.readlines():
+                self.data.append(line.strip('\n'))
     
     def __len__(self):
         return len(self.label)
@@ -37,7 +39,6 @@ class BeatDataset():
     def __getitem__(self, idx):
         num_audio_samples = int(self.audio_length*self.sr)
         audio, sr = torchaudio.load(self.data[idx])
-        target = torch.zeros(int(self.audio_length*100))
 
         audio = audio.float()
         audio /= audio.abs().max() # normalize
@@ -56,64 +57,27 @@ class BeatDataset():
         # sampling control
         if sr != self.sr:
             audio = julius.resample_frac(audio, sr, self.sr)
-        
-        beat_indices = []
-        normalized_beat_times = []
-        beats_by_type = []
+
+        annotations = []
 
         filename = self.label[idx]
         start_time = 0
 
         with open(filename, 'r') as fp:
-            for line in fp.readlines():
-                time_in_seconds, beat_number = line.strip('\n').replace('\t', ' ').split(' ')
-                time_in_seconds = float(time_in_seconds)
-                beat_number = int(beat_number)
+            for index, line in enumerate(fp.readlines()):
+                time_start, time_end, is_downbeat = line.strip('\n').split('\t')
+                time_start = float(time_start)
+                time_end = float(time_end)
+                is_downbeat = int(is_downbeat)
 
-                offset_time = time_in_seconds - start_time
+                annotations.append([time_start, time_end, is_downbeat])
 
-                # 지금 한 오디오 파일로부터 12.8초 짜리만 쓴다.
-                if offset_time < 0:
-                    continue
-
-                if offset_time > self.audio_length:
-                    break
-
-                beat_index = int(offset_time*100) - 1
-                normalized_beat_time = offset_time/self.audio_length
-                beat_type = 1 if beat_number == 1 else 0
-
-                beat_indices.append(beat_index)
-                normalized_beat_times.append(normalized_beat_time)
-                beats_by_type.append(beat_type)
-
-                target[beat_index] = 1
-
-        annotations = {
-            "beat_indices": beat_indices,
-            "normalized_beat_times": normalized_beat_times,
-            "beats_by_type": beats_by_type,
-            "filename": filename
-        }
-
-        return audio, target, annotations
+        return audio, annotations
         
     def random_crop(self,item):
         crop_size = int(self.sequence_len * self.sr)
         start = int(random.random() * (item.shape[0] - crop_size))
         return item[start:(start+crop_size)]
-
-def filter_data(paths):
-    new_paths = []
-    for path in paths:
-        with open(path, 'r') as fp:
-            first_line = fp.readlines()[0]
-            time_in_seconds, beat_number = first_line.strip('\n').replace('\t', ' ').split(' ')
-            time_in_seconds = float(time_in_seconds)
-            if time_in_seconds < 2:
-                new_paths.append(path)
-
-    return new_paths
 
 
 transforms_polarity = 0.8

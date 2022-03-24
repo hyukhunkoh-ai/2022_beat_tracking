@@ -157,10 +157,11 @@ class TcnModel(nn.Module):
         return x
 
 class ClassificationModel(nn.Module):
-    def __init__(self, num_features_in, num_classes=2, feature_size=256):
+    def __init__(self, num_features_in, num_anchors=2, num_classes=2, feature_size=256):
         super(ClassificationModel, self).__init__()
 
         self.num_classes = num_classes
+        self.num_anchors = num_anchors
 
         self.conv1 = nn.Conv1d(num_features_in, feature_size, kernel_size=3, padding=1)
         self.act1 = nn.ReLU()
@@ -174,7 +175,7 @@ class ClassificationModel(nn.Module):
         self.conv4 = nn.Conv1d(feature_size, feature_size, kernel_size=3, padding=1)
         self.act4 = nn.ReLU()
 
-        self.output = nn.Conv1d(feature_size, num_classes, kernel_size=3, padding=1)
+        self.output = nn.Conv1d(feature_size, num_anchors * num_classes, kernel_size=3, padding=1)
         self.output_act = nn.Sigmoid()
 
     def forward(self, x):
@@ -194,10 +195,15 @@ class ClassificationModel(nn.Module):
         out = self.output_act(out)
 
         out1 = out.permute(0, 2, 1)
-        return out1.contiguous().view(x.shape[0], -1, self.num_classes)
+
+        batch_size, length, channels = out1.shape
+
+        out2 = out1.view(batch_size, length, self.num_anchors, self.num_classes)
+
+        return out2.contiguous().view(x.shape[0], -1, self.num_classes)
 
 class RegressionModel(nn.Module):
-    def __init__(self, num_features_in, feature_size=256):
+    def __init__(self, num_features_in, num_anchors=2, feature_size=256):
         super(RegressionModel, self).__init__()
 
         self.conv1 = nn.Conv1d(num_features_in, feature_size, kernel_size=3, padding=1)
@@ -212,7 +218,7 @@ class RegressionModel(nn.Module):
         self.conv4 = nn.Conv1d(feature_size, feature_size, kernel_size=3, padding=1)
         self.act4 = nn.ReLU()
 
-        self.output = nn.Conv1d(feature_size, 2, kernel_size=3, padding=1)
+        self.output = nn.Conv1d(feature_size, num_anchors * 2, kernel_size=3, padding=1)
 
     def forward(self, x):
         out = self.conv1(x)
