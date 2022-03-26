@@ -2,7 +2,7 @@ import torch
 from argparse import ArgumentParser
 
 from dataset import BeatDataset
-from models import TcnModel
+from models import TcnModel, Music2VecModel
 
 parser = ArgumentParser()
 parser.add_argument('--ballroom_dir', type=str, default='./datapath/simac')
@@ -28,7 +28,8 @@ train_dataloader = torch.utils.data.DataLoader(train_dataset_list,
 											pin_memory=True)
 
 dict_args = vars(args)
-model = TcnModel(**dict_args)
+#model = TcnModel(**dict_args)
+model = Music2VecModel(**dict_args)
 optimizer = torch.optim.Adam(self.parameters(), lr=args.lr)
 criterion = torch.nn.CrossEntropyLoss()
 for epoch in range(args.epochs):
