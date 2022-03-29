@@ -12,11 +12,8 @@ from torchaudio_augmentations import *
 # 왈츠는 30 BPM, 퀵스텝 50, 폭스트로트 30, 탱고 33/34이 표준으로 되어 있다. 소셜 리듬댄스는 26/50으로 폭이 넓다.
 # 그만큼 소셜 리듬댄스는 웬만한 음악이면 다 가능하다는 뜻도 된다. 그래서 편안한 파티용으로 많이 쓴다.
 
-
-
-
 class BeatDataset():
-    def __init__(self,datapath,sr=44100,downbeat=False):
+    def __init__(self, path, audio_length=12.8, sr=22050):
         '''
         --datapath
             -- dataname
@@ -27,29 +24,22 @@ class BeatDataset():
                     -- *.beats
         '''
         self.data = []
-        self.label = []
+        self.label = list(glob(os.path.join(path, 'label', '*.beats')))
+        self.audio_length = audio_length
         self.sr = sr
-        self.downbeat= downbeat
-        
-        
-        with os.scandir(datapath) as fs:
-            for f in fs:
-                if f.is_dir():
-                    data = os.path.join(f.path,'data','*.wav')
-                    label = os.path.join(f.path,'label','*.txt')
-                    beats = os.path.join(f.path,'label','*.beats')
-                    self.data += list(glob(data))
-                    self.label += list(glob(label))
-                    self.label += list(glob(beats))
-    
-    
+        self.data = []
+
+        with open(os.path.join(path, 'new_data.txt'), 'r') as fp:
+            for line in fp.readlines():
+                self.data.append(line.strip('\n'))
     
     def __len__(self):
         return len(self.label)
     
-    
-    def __getitem__(self,idx):
+    def __getitem__(self, idx):
+        num_audio_samples = int(self.audio_length*self.sr)
         audio, sr = torchaudio.load(self.data[idx])
+
         audio = audio.float()
         audio /= audio.abs().max() # normalize
         anot = ''
@@ -58,25 +48,38 @@ class BeatDataset():
         random crop 적용
         anot 가공
         '''
+
+        if audio.size(dim=1) < num_audio_samples:
+            audio = torch.nn.ConstantPad1d((0, num_audio_samples - audio.size(dim=1)), 0)(audio)
+        elif audio.size(dim=1) > num_audio_samples:
+            audio = audio.narrow(1, 0, num_audio_samples)
+
         # sampling control
         if sr != self.sr:
             audio = julius.resample_frac(audio, sr, self.sr)
-        
-        with open(self.label[idx],'r',encoding='utf-8') as f:
-            beats = f.read().strip().split('\n')
-            if '' in beats:
-                beats.remove('')
-        
-        beat_downbeat = list(map(str.split(),beats))
-        downbeats = torch.tensor([1 if beat == 1 else 0 for beat in beats_by_type])
-        
-        return audio,beats,downbeats
+
+        annotations = []
+
+        filename = self.label[idx]
+        start_time = 0
+
+        with open(filename, 'r') as fp:
+            for index, line in enumerate(fp.readlines()):
+                time_start, time_end, is_downbeat = line.strip('\n').split('\t')
+                time_start = float(time_start)
+                time_end = float(time_end)
+                is_downbeat = int(is_downbeat)
+
+                annotations.append([time_start, time_end, is_downbeat])
+
+        return audio, annotations
         
     def random_crop(self,item):
         crop_size = int(self.sequence_len * self.sr)
         start = int(random.random() * (item.shape[0] - crop_size))
         return item[start:(start+crop_size)]
-        
+
+
 transforms_polarity = 0.8
 transforms_noise = 0.01
 transforms_gain = 0.3
