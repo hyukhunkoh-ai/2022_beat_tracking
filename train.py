@@ -2,7 +2,7 @@ import torch
 from argparse import ArgumentParser
 
 from dataset import BeatDataset
-from models import TcnModel, RegressionModel, ClassificationModel
+from models import TcnModel, Music2VecModel, SimpleModel, RegressionModel, ClassificationModel
 from anchors import Anchors
 from loss import FocalLoss
 
@@ -28,7 +28,7 @@ def make_batch(samples):
     batch_size = len(audio_list)
 
     desired_length = max([len(sample[1]) for sample in samples])
-    padded_data = torch.zeros(batch_size, desired_length, 3)
+    padded_data = torch.zeros(batch_size, desired_length, 2)
     for index in range(batch_size):
         padded_data[index, :len(samples[index][1]), :] = torch.Tensor(samples[index][1])
 
@@ -43,7 +43,7 @@ train_dataloader = torch.utils.data.DataLoader(train_dataset_list,
                                             collate_fn=make_batch)
 
 dict_args = vars(args)
-model = TcnModel(**dict_args)
+model = SimpleModel()
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
 regressionModel = RegressionModel(256)
@@ -65,7 +65,6 @@ for epoch in range(args.epochs):
 
         optimizer.step()
         #running_loss += loss.item()
-        print("aaa")
         if index % 2000 == 1999:
             print(f'[{epoch + 1}, {index + 1:5d}] loss: {running_loss / 2000:.3f}')
             running_loss = 0.0

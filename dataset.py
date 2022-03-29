@@ -49,14 +49,14 @@ class BeatDataset():
         anot 가공
         '''
 
+        # sampling control
+        if sr != self.sr:
+            audio = julius.resample_frac(audio, sr, self.sr)
+
         if audio.size(dim=1) < num_audio_samples:
             audio = torch.nn.ConstantPad1d((0, num_audio_samples - audio.size(dim=1)), 0)(audio)
         elif audio.size(dim=1) > num_audio_samples:
             audio = audio.narrow(1, 0, num_audio_samples)
-
-        # sampling control
-        if sr != self.sr:
-            audio = julius.resample_frac(audio, sr, self.sr)
 
         annotations = []
 
@@ -65,12 +65,11 @@ class BeatDataset():
 
         with open(filename, 'r') as fp:
             for index, line in enumerate(fp.readlines()):
-                time_start, time_end, is_downbeat = line.strip('\n').split('\t')
-                time_start = float(time_start)
-                time_end = float(time_end)
-                is_downbeat = int(is_downbeat)
+                time, beat_number = line.strip('\n').split(' ')
+                time = float(time)
+                is_downbeat = 1 if int(beat_number) == 1 else 0
 
-                annotations.append([time_start, time_end, is_downbeat])
+                annotations.append([time, is_downbeat])
 
         return audio, annotations
         
