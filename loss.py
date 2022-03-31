@@ -29,16 +29,17 @@ class FocalLoss(nn.Module):
 
         anchor_widths  = anchor[:, 1] - anchor[:, 0]
         anchor_ctr_x   = anchor[:, 0] + 0.5 * anchor_widths
+        print(anchor[:5, :])
 
         for j in range(batch_size):
             classification = classifications[j, :, :]
             regression = regressions[j, :, :]
 
-            bbox_annotation = annotations[j, :, :]
-            bbox_annotation = bbox_annotation[bbox_annotation[:, 2] != -1]
+            bline_annotation = annotations[j, :, :]
+            bline_annotation = bline_annotation[bline_annotation[:, 2] != -1]
             classification = torch.clamp(classification, 1e-4, 1.0 - 1e-4)
 
-            if bbox_annotation.shape[0] == 0:
+            if bline_annotation.shape[0] == 0:
                 if torch.cuda.is_available():
                     alpha_factor = torch.ones(classification.shape).cuda() * alpha
 
@@ -69,12 +70,16 @@ class FocalLoss(nn.Module):
 
                 continue
 
-            IoU = calc_iou(anchors[0, :, :], bbox_annotation[:, :2]) # num_anchors x num_annotations
+            IoU = calc_iou(anchors[0, :, :], bline_annotation[:, :2]) # num_anchors x num_annotations
 
             IoU_max, IoU_argmax = torch.max(IoU, dim=1) # num_anchors x 1
 
-            #import pdb
-            #pdb.set_trace()
+            bounding_line = torch.round(bline_annotation[:, :2]*22050)
+            bline_widths = bounding_line[:, 1] - bounding_line[:, 0]
+            bline_ctr_x = bounding_line[:, 0] + 0.5 * bline_widths
+            print(bounding_line[:5, :])
+
+            #beat_index = ((bline_annotation[:, 1] - bline_annotation[:, 0])*100).int()
 
             # compute the loss for classification
             targets = torch.ones(classification.shape) * -1
@@ -88,7 +93,7 @@ class FocalLoss(nn.Module):
 
             num_positive_anchors = positive_indices.sum()
 
-            assigned_annotations = bbox_annotation[IoU_argmax, :]
+            assigned_annotations = bline_annotation[IoU_argmax, :]
 
             targets[positive_indices, :] = 0
             targets[positive_indices, assigned_annotations[positive_indices, 2].long()] = 1

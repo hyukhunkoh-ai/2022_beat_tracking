@@ -2,7 +2,7 @@ import torch
 from argparse import ArgumentParser
 
 from dataset import BeatDataset
-from models import TcnModel, Music2VecModel, SimpleModel, RegressionModel, ClassificationModel
+from models import TcnModel, Music2VecModel, RegressionModel, ClassificationModel
 from anchors import Anchors
 from loss import FocalLoss
 
