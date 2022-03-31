@@ -65,11 +65,12 @@ class BeatDataset():
 
         with open(filename, 'r') as fp:
             for index, line in enumerate(fp.readlines()):
-                time, beat_number = line.strip('\n').split(' ')
-                time = float(time)
-                is_downbeat = 1 if int(beat_number) == 1 else 0
+                time_start, time_end, is_downbeat = line.strip('\n').split('\t')
+                time_start = float(time_start)
+                time_end = float(time_end)
+                is_downbeat = int(is_downbeat)
 
-                annotations.append([time, is_downbeat])
+                annotations.append([time_start, time_end, is_downbeat])
 
         return audio, annotations
         

@@ -28,7 +28,7 @@ def make_batch(samples):
     batch_size = len(audio_list)
 
     desired_length = max([len(sample[1]) for sample in samples])
-    padded_data = torch.zeros(batch_size, desired_length, 2)
+    padded_data = torch.zeros(batch_size, desired_length, 3)
     for index in range(batch_size):
         padded_data[index, :len(samples[index][1]), :] = torch.Tensor(samples[index][1])
 
