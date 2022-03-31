@@ -4,6 +4,7 @@ from torch import Tensor
 from torch.nn import Module
 from typing import Optional, Tuple
 from argparse import ArgumentParser
+import numpy as np
 '''
 >>> torch.Size([32])
     # 1d: [batch_size] 
@@ -798,17 +799,6 @@ class ClassificationModel(nn.Module):
         out2 = out1.view(batch_size, length, self.num_anchors, self.num_classes)
 
         return out2.contiguous().view(x.shape[0], -1, self.num_classes)
-
-class SimpleModel(nn.Module):
-    def __init__(self):
-        super(SimpleModel, self).__init__()
-        self.conv = nn.Linear(int(22050*12.8), 256)
-        self.sigmoid = nn.Sigmoid()
-
-    def forward(self, x):
-        x = self.conv(x)
-        x = self.sigmoid(x)
-        return x.permute(0, 2, 1)
 
 class RegressionModel(nn.Module):
     def __init__(self, num_features_in, num_anchors=1, feature_size=256):

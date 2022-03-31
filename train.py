@@ -43,7 +43,7 @@ train_dataloader = torch.utils.data.DataLoader(train_dataset_list,
                                             collate_fn=make_batch)
 
 dict_args = vars(args)
-model = SimpleModel()
+model = TcnModel(**dict_args)
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
 regressionModel = RegressionModel(256)
@@ -56,7 +56,8 @@ for epoch in range(args.epochs):
     for index, data in enumerate(train_dataloader, 0):
         inputs, annotations = data
         optimizer.zero_grad()
-        outputs = model(inputs)
+        outputs = torch.randn(16, 256, 1280)
+        #outputs = model(inputs)
 
         regression = regressionModel(outputs)
         classification = classificationModel(outputs)
