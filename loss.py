@@ -2,101 +2,42 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-def calc_iou(a, b):
-    line = b[:, 1] - b[:, 0]
-
-    intersection = torch.min(torch.unsqueeze(a[:, 1], dim=1), b[:, 1]) - torch.max(torch.unsqueeze(a[:, 0], 1), b[:, 0])
-    intersection = torch.clamp(intersection, min=0)
-
-    union = torch.unsqueeze((a[:, 1] - a[:, 0]), dim=1) + line - intersection
-    union = torch.clamp(union, min=1e-8)
-
-    IoU = intersection / union
-
-    return IoU
-
 class FocalLoss(nn.Module):
     #def __init__(self):
 
-    def forward(self, classifications, regressions, anchors, annotations):
+    def forward(self, classifications, regressions, annotations):
         alpha = 0.25
         gamma = 2.0
         batch_size = classifications.shape[0]
         classification_losses = []
         regression_losses = []
 
-        anchor = anchors[0, :, :]
-
-        anchor_widths  = anchor[:, 1] - anchor[:, 0]
-        anchor_ctr_x   = anchor[:, 0] + 0.5 * anchor_widths
-        print(anchor[:5, :])
-
         for j in range(batch_size):
             classification = classifications[j, :, :]
             regression = regressions[j, :, :]
 
             bline_annotation = annotations[j, :, :]
-            bline_annotation = bline_annotation[bline_annotation[:, 2] != -1]
+            bline_annotation = bline_annotation[bline_annotation[:, 2] != -1] # -1은 padding value
             classification = torch.clamp(classification, 1e-4, 1.0 - 1e-4)
 
-            if bline_annotation.shape[0] == 0:
-                if torch.cuda.is_available():
-                    alpha_factor = torch.ones(classification.shape).cuda() * alpha
+            beat_lines = bline_annotation[:, :2]
+            beat_timepoints = (beat_lines[:, 0] + beat_lines[:, 1])/2
+            positive_indices = torch.floor(beat_timepoints*100)
+            
+            anchor_beats_start = anchor_beats_end/100
+            anchor_beats_end = positive_indices + 0.01
 
-                    alpha_factor = 1. - alpha_factor
-                    focal_weight = classification
-                    focal_weight = alpha_factor * torch.pow(focal_weight, gamma)
-
-                    bce = -(torch.log(1.0 - classification))
-
-                    # cls_loss = focal_weight * torch.pow(bce, gamma)
-                    cls_loss = focal_weight * bce
-                    classification_losses.append(cls_loss.sum())
-                    regression_losses.append(torch.tensor(0).float().cuda())
-
-                else:
-                    alpha_factor = torch.ones(classification.shape) * alpha
-
-                    alpha_factor = 1. - alpha_factor
-                    focal_weight = classification
-                    focal_weight = alpha_factor * torch.pow(focal_weight, gamma)
-
-                    bce = -(torch.log(1.0 - classification))
-
-                    # cls_loss = focal_weight * torch.pow(bce, gamma)
-                    cls_loss = focal_weight * bce
-                    classification_losses.append(cls_loss.sum())
-                    regression_losses.append(torch.tensor(0).float())
-
-                continue
-
-            IoU = calc_iou(anchors[0, :, :], bline_annotation[:, :2]) # num_anchors x num_annotations
-
-            IoU_max, IoU_argmax = torch.max(IoU, dim=1) # num_anchors x 1
-
-            bounding_line = torch.round(bline_annotation[:, :2]*22050)
-            bline_widths = bounding_line[:, 1] - bounding_line[:, 0]
-            bline_ctr_x = bounding_line[:, 0] + 0.5 * bline_widths
-            print(bounding_line[:5, :])
-
-            #beat_index = ((bline_annotation[:, 1] - bline_annotation[:, 0])*100).int()
-
+            ##########################
             # compute the loss for classification
-            targets = torch.ones(classification.shape) * -1
+            # 1280, 2
+            targets = torch.zeros(classification.shape)
 
             if torch.cuda.is_available():
                 targets = targets.cuda()
 
-            targets[torch.lt(IoU_max, 0.4), :] = 0
+            num_positive_anchors = len(positive_indices)
 
-            positive_indices = torch.ge(IoU_max, 0.5)
-
-            num_positive_anchors = positive_indices.sum()
-
-            assigned_annotations = bline_annotation[IoU_argmax, :]
-
-            targets[positive_indices, :] = 0
-            targets[positive_indices, assigned_annotations[positive_indices, 2].long()] = 1
+            targets[positive_indices, beat_lines[positive_indices, 2].long()] = 1
 
             if torch.cuda.is_available():
                 alpha_factor = torch.ones(targets.shape).cuda() * alpha
@@ -112,53 +53,39 @@ class FocalLoss(nn.Module):
             # cls_loss = focal_weight * torch.pow(bce, gamma)
             cls_loss = focal_weight * bce
 
-            if torch.cuda.is_available():
-                cls_loss = torch.where(torch.ne(targets, -1.0), cls_loss, torch.zeros(cls_loss.shape).cuda())
-            else:
-                cls_loss = torch.where(torch.ne(targets, -1.0), cls_loss, torch.zeros(cls_loss.shape))
-
             classification_losses.append(cls_loss.sum()/torch.clamp(num_positive_anchors.float(), min=1.0))
 
+            ##########################
             # compute the loss for regression
 
-            if positive_indices.sum() > 0:
-                assigned_annotations = assigned_annotations[positive_indices, :]
+            anchor_widths_pi = 0.01 # anchor_beats_end - anchor_beats_start
+            anchor_ctr_x_pi = anchor_beats_start + 0.005 # anchor_beats_start + 0.5*anchor_widths_pi
 
-                anchor_widths_pi = anchor_widths[positive_indices]
-                anchor_ctr_x_pi = anchor_ctr_x[positive_indices]
+            gt_widths  = 0.01 # beat_lines[:, 1] - beat_lines[:, 0]
+            gt_ctr_x   = beat_lines[:, 0] + 0.005 # beat_lines[:, 0] + 0.5*gt_widths
+            # gt_start = beat_lines[:, 0]
+            # gt_end = beat_lines[:, 1]
 
-                gt_widths  = assigned_annotations[:, 1] - assigned_annotations[:, 0]
-                gt_ctr_x   = assigned_annotations[:, 0] + 0.5 * gt_widths
+            # clip widths to 1
+            gt_widths  = torch.clamp(gt_widths, min=0.01)
 
-                # clip widths to 1
-                gt_widths  = torch.clamp(gt_widths, min=1)
+            targets_dx = (gt_ctr_x - anchor_ctr_x_pi) / anchor_widths_pi
+            # targets_dw = torch.log(gt_widths / anchor_widths_pi)
+            # targets_distance_start = anchor_beats_start - gt_start
+            # targets_distance_end = anchor_beats_end - gt_end
 
-                targets_dx = (gt_ctr_x - anchor_ctr_x_pi) / anchor_widths_pi
-                targets_dw = torch.log(gt_widths / anchor_widths_pi)
+            # targets = torch.stack((targets_distance_start, targets_distance_end))
+            # targets = targets.t()
 
-                targets = torch.stack((targets_dx, targets_dw))
-                targets = targets.t()
+            regression_diff = torch.abs(targets - regression[positive_indices, :])
 
-                if torch.cuda.is_available():
-                    targets = targets/torch.Tensor([[0.1, 0.2]]).cuda()
-                else:
-                    targets = targets/torch.Tensor([[0.1, 0.2]])
-
-                negative_indices = 1 + (~positive_indices)
-
-                regression_diff = torch.abs(targets - regression[positive_indices, :])
-
-                regression_loss = torch.where(
-                    torch.le(regression_diff, 1.0 / 9.0),
-                    0.5 * 9.0 * torch.pow(regression_diff, 2),
-                    regression_diff - 0.5 / 9.0
-                )
-                regression_losses.append(regression_loss.mean())
-            else:
-                if torch.cuda.is_available():
-                    regression_losses.append(torch.tensor(0).float().cuda())
-                else:
-                    regression_losses.append(torch.tensor(0).float())
+            # 9.0 삭제됨. num_box로 추측했고, 명시된 근거가 없음
+            regression_loss = torch.where(
+                torch.le(regression_diff, 1.0),
+                0.5 * torch.pow(regression_diff, 2),
+                regression_diff - 0.5
+            )
+            regression_losses.append(regression_loss.mean())
 
         return torch.stack(classification_losses).mean(dim=0, keepdim=True), torch.stack(regression_losses).mean(dim=0, keepdim=True)
 

@@ -66,8 +66,8 @@ class BeatDataset():
         with open(filename, 'r') as fp:
             for index, line in enumerate(fp.readlines()):
                 time_start, time_end, is_downbeat = line.strip('\n').split('\t')
-                time_start = float(time_start)
-                time_end = float(time_end)
+                time_start = round(float(time_start), 4)
+                time_end = round(float(time_end), 4)
                 is_downbeat = int(is_downbeat)
 
                 annotations.append([time_start, time_end, is_downbeat])
