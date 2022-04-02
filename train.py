@@ -1,3 +1,4 @@
+from sklearn.linear_model import MultiTaskElasticNet
 import torch
 from argparse import ArgumentParser
 
@@ -37,32 +38,36 @@ def make_batch(samples):
 train_dataset_list = torch.utils.data.ConcatDataset(train_datasets)
 train_dataloader = torch.utils.data.DataLoader(train_dataset_list,
                                             shuffle=True,
-                                            batch_size=16,
+                                            batch_size=4,
                                             num_workers=0,
                                             pin_memory=True,
                                             collate_fn=make_batch)
 
 dict_args = vars(args)
-model = TcnModel(**dict_args)
+model = Music2VecModel().cuda()#TcnModel(**dict_args)
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
-regressionModel = RegressionModel(256)
-classificationModel = ClassificationModel(256)
-anchorsModel = Anchors(audio_length=12.8, sr=22050, num_anchors=1280)
+regressionModel = RegressionModel(256).cuda()
+classificationModel = ClassificationModel(256).cuda()
+#anchorsModel = Anchors(audio_length=12.8, sr=22050, num_anchors=1280)
 focalLoss = FocalLoss()
 
 for epoch in range(args.epochs):
     running_loss = 0.0
     for index, data in enumerate(train_dataloader, 0):
         inputs, annotations = data
+        inputs = inputs.cuda()
+        annotations = annotations.cuda()
+
         optimizer.zero_grad()
-        outputs = torch.randn(16, 256, 1280)
-        #outputs = model(inputs)
+        #outputs = torch.randn(16, 1280, 256).cuda()
+        outputs = model(inputs)
+        outputs = outputs.permute(0, 2, 1)
 
         regression = regressionModel(outputs)
         classification = classificationModel(outputs)
-        anchors = anchorsModel(inputs)
-        loss = focalLoss(classification, regression, anchors, annotations)
+        #anchors = anchorsModel(inputs)
+        loss = focalLoss(classification, regression, annotations)
 
         optimizer.step()
         #running_loss += loss.item()

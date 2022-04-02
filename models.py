@@ -28,7 +28,7 @@ import numpy as np
 '''
 
 class Music2VecModel(Module):
-    def __init__(self, detect_out=256, out_features=768, num_layers=12, layer_norm_first=False):
+    def __init__(self, detect_out=256, out_features=768, num_layers=12):
         super().__init__()
         # wavebeat의 channel 늘리는 것과 wav2vec2.0에서 channel 유지시키는 것을 mix했고 2019 tcn 모델의 dilated 부분을 참고했다
         # dilated는 128까지
@@ -66,7 +66,7 @@ class Music2VecModel(Module):
         # Expected values are 0.1 for both Base and Large arch.
         self.transformer_layer_drop = 0.1
 
-        blocks = []
+        blocks = nn.ModuleList()
         in_channels = 1
 
         for i, (out_channels, kernel_size, stride) in enumerate(shapes):
@@ -229,6 +229,11 @@ class Music2VecModel(Module):
         print("Projection layer (Music2Vec -> Object Detection)", x.shape)
 
         x = self.detect_project(x)
+
+        #########################
+        # Result
+        # torch.Size([2, 1280, 256])
+        print("Result", x.shape)
 
         return x
 
@@ -819,6 +824,7 @@ class RegressionModel(nn.Module):
         self.output = nn.Conv1d(feature_size, num_anchors * 1, kernel_size=3, padding=1)
 
     def forward(self, x):
+        print("regression forward", x.shape)
         out = self.conv1(x)
         out = self.act1(out)
 

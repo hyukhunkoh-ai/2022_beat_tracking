@@ -20,12 +20,11 @@ class FocalLoss(nn.Module):
             bline_annotation = bline_annotation[bline_annotation[:, 2] != -1] # -1은 padding value
             classification = torch.clamp(classification, 1e-4, 1.0 - 1e-4)
 
-            beat_lines = bline_annotation[:, :2]
+            beat_lines = bline_annotation[:, :]
             beat_timepoints = (beat_lines[:, 0] + beat_lines[:, 1])/2
-            positive_indices = torch.floor(beat_timepoints*100)
+            positive_indices = torch.floor(beat_timepoints*100).long()
             
-            anchor_beats_start = anchor_beats_end/100
-            anchor_beats_end = positive_indices + 0.01
+            anchor_beats_start = positive_indices/100
 
             ##########################
             # compute the loss for classification
@@ -37,10 +36,10 @@ class FocalLoss(nn.Module):
 
             num_positive_anchors = len(positive_indices)
 
-            targets[positive_indices, beat_lines[positive_indices, 2].long()] = 1
+            targets[positive_indices, beat_lines[:, 2].long()] = 1
 
             if torch.cuda.is_available():
-                alpha_factor = torch.ones(targets.shape).cuda() * alpha
+                alpha_factor = (torch.ones(targets.shape) * alpha).cuda()
             else:
                 alpha_factor = torch.ones(targets.shape) * alpha
 
@@ -53,7 +52,7 @@ class FocalLoss(nn.Module):
             # cls_loss = focal_weight * torch.pow(bce, gamma)
             cls_loss = focal_weight * bce
 
-            classification_losses.append(cls_loss.sum()/torch.clamp(num_positive_anchors.float(), min=1.0))
+            classification_losses.append(cls_loss.sum()/num_positive_anchors)
 
             ##########################
             # compute the loss for regression
@@ -67,9 +66,9 @@ class FocalLoss(nn.Module):
             # gt_end = beat_lines[:, 1]
 
             # clip widths to 1
-            gt_widths  = torch.clamp(gt_widths, min=0.01)
+            #gt_widths  = torch.clamp(gt_widths, min=0.01)
 
-            targets_dx = (gt_ctr_x - anchor_ctr_x_pi) / anchor_widths_pi
+            targets_dx = ((gt_ctr_x - anchor_ctr_x_pi) / anchor_widths_pi).cuda()
             # targets_dw = torch.log(gt_widths / anchor_widths_pi)
             # targets_distance_start = anchor_beats_start - gt_start
             # targets_distance_end = anchor_beats_end - gt_end
@@ -77,7 +76,8 @@ class FocalLoss(nn.Module):
             # targets = torch.stack((targets_distance_start, targets_distance_end))
             # targets = targets.t()
 
-            regression_diff = torch.abs(targets - regression[positive_indices, :])
+            targets_dx = targets_dx.unsqueeze(1)
+            regression_diff = torch.abs(targets_dx - regression[positive_indices, :])
 
             # 9.0 삭제됨. num_box로 추측했고, 명시된 근거가 없음
             regression_loss = torch.where(

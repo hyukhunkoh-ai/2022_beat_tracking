@@ -70,7 +70,8 @@ class BeatDataset():
                 time_end = round(float(time_end), 4)
                 is_downbeat = int(is_downbeat)
 
-                annotations.append([time_start, time_end, is_downbeat])
+                if time_start < self.audio_length or time_end <= self.audio_length:
+                    annotations.append([time_start, time_end, is_downbeat])
 
         return audio, annotations
         
