@@ -262,14 +262,14 @@ class Music2VecModel(Module):
         transformer_x = self.tcn_to_transformer(extract_x)
 
         hidden_states, mask_time_indices = self._mask_hidden_states(transformer_x) # B, l (T/F)
-        encoder_outputs = self.transformer(hidden_states)
+        encoder_outputs = self.transformer(hidden_states, None)
 
         transformer_features = self.project_hid(encoder_outputs)
 
         quantized_features, codevector_perplexity = self.quantizer(extract_x, mask_time_indices)
         quantized_features = self.project_q(quantized_features) # z->q(b,l,256)
 
-
+        num_negatives = 100
         negative_quantized_features = self._sample_negatives(
             quantized_features, num_negatives, attention_mask=None
         )
@@ -289,15 +289,18 @@ class Music2VecModel(Module):
 
         target = ((1 - mask_time_indices.long()) * -100).transpose(0, 1).flatten()
         contrastive_loss = nn.functional.cross_entropy(preds.float(), target, reduction="sum")
-
+        
+        num_codevectors_per_group = 320
+        num_codevector_groups = 2
+        diversity_loss_weight = 0.1
         num_codevectors = num_codevectors_per_group * num_codevector_groups
         diversity_loss = (num_codevectors - codevector_perplexity) / num_codevectors
-
+        print(contrastive_loss, diversity_loss_weight * diversity_loss)
         loss = contrastive_loss + diversity_loss_weight * diversity_loss
 
         return loss
 
-    def sample_to_tcn(x):
+    def sample_to_tcn(self, x):
         #########################
         # Pre-TCN
         # torch.Size([2, 1, 282240]) (batch, feature, audio sample)
@@ -316,7 +319,7 @@ class Music2VecModel(Module):
 
         return x
 
-    def tcn_to_transformer(x):
+    def tcn_to_transformer(self, x):
         #########################
         # Projection (TCN -> Transformer)
         # torch.Size([2, 1280, 512]) (batch size, sequence length, channel)
@@ -328,7 +331,7 @@ class Music2VecModel(Module):
 
         return x
 
-    def transformer_embedding(x):
+    def transformer_embedding(self, x):
         #########################
         # Transformer embedding
         # torch.Size([2, 1280, 768])
@@ -345,7 +348,7 @@ class Music2VecModel(Module):
 
         return x
 
-    def generate_mask(x):
+    def generate_mask(self, x, lengths):
         #########################
         # Mask generation
         print("Mask generation", x.shape)
@@ -362,7 +365,7 @@ class Music2VecModel(Module):
 
         return attention_mask
 
-    def transformer(x):
+    def transformer(self, x, attention_mask):
         #########################
         # Transformer
         # torch.Size([2, 1280, 768])
@@ -382,8 +385,8 @@ class Music2VecModel(Module):
         x = self.sample_to_tcn(x)
         x = self.tcn_to_transformer(x)
         x = self.transformer_embedding(x)
-        attention_mask = self.generate_mask(x)
-        x = self.transformer(x)
+        attention_mask = self.generate_mask(x, lengths)
+        x = self.transformer(x, attention_mask)
 
         #########################
         # Result

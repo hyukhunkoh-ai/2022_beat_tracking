@@ -24,7 +24,7 @@ def _compute_mask_indices(
 
     """
     batch_size, sequence_length = shape
-    attention_mask_length = attention_mask.sum(1)
+    attention_mask_length = 0#attention_mask.sum(1)
 
     # compute number of masked spans in batch (span 개수: 8개)
     num_masked_spans = int(mask_prob * sequence_length / (mask_length + attention_mask_length) + torch.rand((1,)).item())
