@@ -5,6 +5,9 @@ from torch.nn import Module
 from typing import Optional, Tuple
 from argparse import ArgumentParser
 import numpy as np
+from vector_quantizer import Wav2Vec2GumbelVectorQuantizer
+from compute_mask_idx import _compute_mask_indices
+
 '''
 >>> torch.Size([32])
     # 1d: [batch_size] 
@@ -28,6 +31,368 @@ import numpy as np
 '''
 
 class Music2VecModel(Module):
+    def __init__(self, out_features=768, num_layers=12):
+        super().__init__()
+        # wavebeat의 channel 늘리는 것과 wav2vec2.0에서 channel 유지시키는 것을 mix했고 2019 tcn 모델의 dilated 부분을 참고했다
+        # dilated는 128까지
+        # cnn block 개수는 wav2vec와 동일함
+        # NOTE!!!! 마지막 block에서 padding을 하나 줄임 (1283 -> 1280)
+        # out_features=768는 transformer의 embedding size
+        shapes = [
+            (32, 10, 11),
+            (64, 3, 5),
+            (128, 3, 2),
+            (256, 3, 2),
+            (256, 3, 1),
+            (512, 2, 1),
+            (512, 2, 1)
+        ]
+        
+        # Expected values are False for Base (12 layers) and True for Large arch (24 layers).
+        self.layer_norm_first = num_layers > 12
+        
+        # Expected values are 12 for Base and 16 for Large arch.
+        self.num_heads = 16 if num_layers > 12 else 12
+
+        # Expected values are 0.1 for Base and 0.0 for Large arch.
+        self.attention_dropout = 0.0 if num_layers > 12 else 0.1
+
+        # Expected values are 3072 for Base and 4096 for Large arch.
+        self.ff_interm_features = 4096 if num_layers > 12 else 3072
+        
+        # Expected values are 0.1 for both Base and Large arch.
+        self.ff_interm_dropout = 0.1
+
+        # Expected values are 0.1 for Base and 0.0 for Large arch.
+        self.ff_dropout = 0.0 if num_layers > 12 else 0.1
+
+        # Expected values are 0.1 for both Base and Large arch.
+        self.transformer_layer_drop = 0.1
+
+        blocks = nn.ModuleList()
+        in_channels = 1
+
+        for i, (out_channels, kernel_size, stride) in enumerate(shapes):
+            # 2^7 = 128
+            dilation = 2 ** i
+            pad_value = ((kernel_size - 1) * dilation) // 2
+            if i == len(shapes) - 1:
+                pad_value -= 1
+
+            normalization = nn.GroupNorm(
+                num_groups=out_channels,
+                num_channels=out_channels,
+                affine=True,
+            )
+
+            blocks.append(
+                nn.Conv1d(
+                    in_channels=in_channels,
+                    out_channels=out_channels,
+                    kernel_size=kernel_size,
+                    stride=stride,
+                    dilation=dilation,
+                    padding=pad_value,
+                    bias=False,
+                )
+            )
+            in_channels = out_channels
+
+        # initialize
+        #self.feature_extractor = FeatureExtractor(nn.ModuleList(blocks))
+        self.blocks = blocks
+        self.num_remove: int = 1 if kernel_size % 2 == 0 else 0
+
+        #########################
+
+        in_features = out_channels
+
+        self.projection_layer_norm = nn.LayerNorm(in_features)
+        self.projection = nn.Linear(in_features, out_features,)
+        self.projection_dropout = nn.Dropout(0.1)
+
+        # b, 1283, 768
+
+        embedding_kernel_size = 128
+        self.conv = nn.Conv1d(
+            in_channels=out_features,
+            out_channels=out_features,
+            kernel_size=embedding_kernel_size,
+            padding=embedding_kernel_size // 2,
+            groups=16,
+        )
+        self.conv = nn.utils.weight_norm(self.conv, name="weight", dim=2) # weight norm
+        self.num_remove2: int = 1 if embedding_kernel_size % 2 == 0 else 0
+
+        #########################
+
+        self.encoder_layers = nn.ModuleList()
+        self.attention_layer_norm = nn.LayerNorm(out_features)
+        self.transformer_dropout = nn.Dropout(self.ff_dropout)
+
+        for _ in range(num_layers):
+            attention = SelfAttention(
+                embed_dim=out_features,
+                num_heads=self.num_heads,
+                dropout=self.attention_dropout,
+            ) #
+            feed_forward = FeedForward(
+                io_features=out_features,
+                intermediate_features=self.ff_interm_features,
+                intermediate_dropout=self.ff_interm_dropout,
+                output_dropout=self.ff_dropout,
+            )
+            self.encoder_layers.append(
+                EncoderLayer(
+                    attention=attention,
+                    dropout=self.ff_dropout,
+                    layer_norm_first=self.layer_norm_first,
+                    feed_forward=feed_forward,
+                )
+            )
+
+        self.masked_spec_embed = nn.Parameter(torch.FloatTensor(768).uniform_())
+
+        ### pretrain###
+        self.quantizer = Wav2Vec2GumbelVectorQuantizer()
+        self.project_q = nn.Linear(256, 256) # from codebook to compare
+        self.project_hid = nn.Linear(768, 256) # from c to compare
+
+    def _mask_hidden_states(
+        self,
+        hidden_states: torch.FloatTensor,
+        attention_mask: Optional[torch.LongTensor] = None,
+    ):
+        batch_size, sequence_length, hidden_size = hidden_states.size()
+        mask_time_length = 10
+        mask_time_prob = 0.065
+        mask_time_indices = _compute_mask_indices(
+            (batch_size, sequence_length),
+            mask_prob=mask_time_prob,
+            mask_length=mask_time_length,
+            device=hidden_states.device,
+            attention_mask=attention_mask,
+            min_masks=2,
+        )
+        hidden_states[mask_time_indices] = self.masked_spec_embed.to(hidden_states.dtype)
+
+        return hidden_states,mask_time_indices
+
+    def set_gumbel_temperature(self, temperature: int):
+        return self.quantizer.set_temperature(temperature)
+
+    def _init_weights(self, module):
+        if isinstance(module, Wav2Vec2GumbelVectorQuantizer):
+            module.weight_proj.weight.data.normal_(mean=0.0, std=1)
+            module.weight_proj.bias.data.zero_()
+            nn.init.uniform_(module.codevectors)
+        elif isinstance(module, nn.Linear):
+            module.weight.data.normal_(mean=0.0, std=initializer_range)
+        elif isinstance(module, (nn.LayerNorm, nn.GroupNorm)):
+            module.bias.data.zero_()
+            module.weight.data.fill_(1.0)
+        elif isinstance(module, nn.Conv1d):
+            nn.init.kaiming_normal_(module.weight.data)
+
+        if isinstance(module, (nn.Linear, nn.Conv1d)) and module.bias is not None:
+            module.bias.data.zero_()
+
+    @staticmethod
+    def _sample_negatives(
+        features: torch.FloatTensor, num_negatives: int, attention_mask: Optional[torch.LongTensor] = None
+    ):
+        batch_size, sequence_length, hidden_size = features.shape
+        if sequence_length <= 1:
+            raise ValueError(
+                f"`features should have `sequence_length` > 1, but are of shape (batch_size, sequence_length, hidden_size) = ({batch_size, sequence_length, hidden_size})."
+            )
+
+        features = features.view(-1, hidden_size)  # B,l,C => (B*l),C
+
+        with torch.no_grad():
+
+            sampled_negative_indices = []
+            for batch_idx in range(batch_size):
+                high = attention_mask[batch_idx].sum() - 1 if attention_mask is not None else sequence_length - 1
+                sampled_indices_slice = torch.randint(
+                    0, high, size=(num_negatives * sequence_length,), device=features.device
+                )
+                sampled_negative_indices.append(sampled_indices_slice)
+
+            sampled_negative_indices = torch.stack(sampled_negative_indices)
+
+
+
+            feature_indices = (
+                torch.arange(sequence_length, device=features.device)[:, None]
+                .expand(sequence_length, num_negatives)
+                .flatten()
+            )
+
+
+            sampled_negative_indices[sampled_negative_indices >= feature_indices] += 1
+
+        for batch_idx in range(1, batch_size):
+            sampled_negative_indices[batch_idx] += batch_idx * sequence_length
+
+        sampled_negatives = features[sampled_negative_indices.view(-1)]
+        sampled_negatives = sampled_negatives.view(batch_size, sequence_length, num_negatives, hidden_size)
+        sampled_negatives = sampled_negatives.permute(2, 0, 1, 3)
+
+        return sampled_negatives     # K,b,l,256
+
+    @staticmethod
+    def compute_contrastive_logits(
+            target_features: torch.FloatTensor, # 1,b,l,256
+            negative_features: torch.FloatTensor,
+            predicted_features: torch.FloatTensor,  # b,l,256
+            temperature=1.0,
+    ):
+        target_features = torch.cat([target_features, negative_features], dim=0)
+
+        logits = torch.cosine_similarity(predicted_features.float(), target_features.float(), dim=-1).type_as(
+            target_features
+        )
+
+        logits = logits / temperature # 첫번째는 유사도가 높아야함
+        return logits
+
+    def calculate_loss(self, waveforms: Tensor) -> Tensor:
+        extract_x = self.sample_to_tcn(waveforms)
+        transformer_x = self.tcn_to_transformer(extract_x)
+
+        hidden_states, mask_time_indices = self._mask_hidden_states(transformer_x) # B, l (T/F)
+        encoder_outputs = self.transformer(hidden_states)
+
+        transformer_features = self.project_hid(encoder_outputs)
+
+        quantized_features, codevector_perplexity = self.quantizer(extract_x, mask_time_indices)
+        quantized_features = self.project_q(quantized_features) # z->q(b,l,256)
+
+
+        negative_quantized_features = self._sample_negatives(
+            quantized_features, num_negatives, attention_mask=None
+        )
+
+        logits = self.compute_contrastive_logits(
+            quantized_features[None, :],
+            negative_quantized_features,
+            transformer_features,
+            0.1)
+
+        neg_is_pos = (quantized_features == negative_quantized_features).all(-1)
+
+        if neg_is_pos.any():
+            logits[1:][neg_is_pos] = float("-inf") # k,b,l
+
+        preds = logits.transpose(0, 2).reshape(-1, logits.size(0))
+
+        target = ((1 - mask_time_indices.long()) * -100).transpose(0, 1).flatten()
+        contrastive_loss = nn.functional.cross_entropy(preds.float(), target, reduction="sum")
+
+        num_codevectors = num_codevectors_per_group * num_codevector_groups
+        diversity_loss = (num_codevectors - codevector_perplexity) / num_codevectors
+
+        loss = contrastive_loss + diversity_loss_weight * diversity_loss
+
+        return loss
+
+    def sample_to_tcn(x):
+        #########################
+        # Pre-TCN
+        # torch.Size([2, 1, 282240]) (batch, feature, audio sample)
+        print("Pre-TCN", x.shape)
+
+        # 마지막 block에서 padding을 하나 줄임 (1283 -> 1280)
+        for block in self.blocks:
+            x = block(x)
+
+        # batch size, channel, sequence length
+        # 마지막 block에서 padding을 하나 줄임 (1283 -> 1280)
+        if self.num_remove > 0:
+            x = x[..., :-self.num_remove]
+
+        x = x.transpose(-2, -1)
+
+        return x
+
+    def tcn_to_transformer(x):
+        #########################
+        # Projection (TCN -> Transformer)
+        # torch.Size([2, 1280, 512]) (batch size, sequence length, channel)
+        print("Projection (TCN -> Transformer)", x.shape)
+
+        x = self.projection_layer_norm(x)
+        x = self.projection(x)
+        x = self.projection_dropout(x)
+
+        return x
+
+    def transformer_embedding(x):
+        #########################
+        # Transformer embedding
+        # torch.Size([2, 1280, 768])
+        print("Transformer embedding", x.shape)
+
+        embedded_x = x.transpose(-2, -1)
+        embedded_x = self.conv(embedded_x)
+        if self.num_remove2 > 0:
+            embedded_x = embedded_x[..., :-self.num_remove2]
+        embedded_x = torch.nn.functional.gelu(embedded_x)
+        embedded_x = embedded_x.transpose(-2, -1)
+
+        x = x + embedded_x
+
+        return x
+
+    def generate_mask(x):
+        #########################
+        # Mask generation
+        print("Mask generation", x.shape)
+
+        attention_mask: Optional[Tensor] = None
+        if lengths is not None:
+            batch_size, max_len, _ = x.shape
+            # create mask for padded elements and zero-out them
+            attention_mask = torch.arange(max_len, device=lengths.device).expand(batch_size, max_len) >= lengths[:, None]
+            x[attention_mask] = 0.0
+            # extend the mask to attention shape and set weight
+            attention_mask = -10000.0 * attention_mask[:, None, None, :].to(dtype=features.dtype)
+            attention_mask = attention_mask.expand(batch_size, 1, max_len, max_len)
+
+        return attention_mask
+
+    def transformer(x):
+        #########################
+        # Transformer
+        # torch.Size([2, 1280, 768])
+        print("Transformer", x.shape)
+
+        if not self.layer_norm_first:
+            x = self.attention_layer_norm(x)
+
+        x = self.transformer_dropout(x)
+        for layer in self.encoder_layers:
+            if not (self.training and torch.rand(1).item() <= self.transformer_layer_drop):
+                x = layer(x, attention_mask)
+
+        return x
+
+    def forward(self, x, lengths=None):
+        x = self.sample_to_tcn(x)
+        x = self.tcn_to_transformer(x)
+        x = self.transformer_embedding(x)
+        attention_mask = self.generate_mask(x)
+        x = self.transformer(x)
+
+        #########################
+        # Result
+        # torch.Size([2, 1280, 768])
+        print("Result", x.shape)
+
+        return x
+
+class MusicDetectionModel(Module):
     def __init__(self, detect_out=256, out_features=768, num_layers=12):
         super().__init__()
         # wavebeat의 channel 늘리는 것과 wav2vec2.0에서 channel 유지시키는 것을 mix했고 2019 tcn 모델의 dilated 부분을 참고했다
@@ -649,115 +1014,6 @@ def get_activation(act_type,ch=None):
         return torch.nn.SELU()
     elif act_type == "ELU":
         return torch.nn.ELU()
-
-class dsTCNBlock(torch.nn.Module):
-    def __init__(self,
-                 in_ch,
-                 out_ch,
-                 kernel_size,
-                 stride=1,
-                 dilation=1,
-                 norm_type="BatchNorm",
-                 act_type="PReLU"):
-        super(dsTCNBlock, self).__init__()
-        self.in_ch = in_ch
-        self.out_ch = out_ch
-        self.kernel_size = kernel_size
-        self.stride = stride
-        self.norm_type = norm_type
-
-        pad_value = ((kernel_size - 1) * dilation) // 2
-
-        self.conv1 = torch.nn.Conv1d(in_ch,
-                                     out_ch,
-                                     kernel_size=kernel_size,
-                                     stride=stride,
-                                     dilation=dilation,
-                                     padding=pad_value)
-        self.act1 = get_activation(act_type, out_ch)
-
-        if norm_type == "BatchNorm":
-            self.norm1 = torch.nn.BatchNorm1d(out_ch)
-            self.res_norm = torch.nn.BatchNorm1d(out_ch)
-        else:
-            self.norm1 = None
-            self.res_norm = None
-
-        self.res_conv = torch.nn.Conv1d(in_ch,
-                                        out_ch,
-                                        kernel_size=1,
-                                        stride=stride)
-
-    def forward(self, x):
-        x_res = x
-
-        x = self.conv1(x)
-        if self.norm1 is not None:
-            x = self.norm1(x)
-        x = self.act1(x)
-
-        # -- residual connection --
-        x_res = self.res_conv(x_res)
-        if self.res_norm is not None:
-            x_res = self.res_norm(x_res)
-
-        return x + x_res
-
-class TcnModel(nn.Module):
-    """ Downsampling Temporal convolutional network.
-        Args:
-            ninputs (int): Number of input channels (mono = 1, stereo 2). Default: 1
-            noutputs (int): Number of output channels (mono = 1, stereo 2). Default: 1
-            nblocks (int): Number of total TCN blocks. Default: 10
-            kernel_size (int): Width of the convolutional kernels. Default: 15
-            stride (int): Stide size when applying convolutional filter. Default: 2 
-            dialation_growth (int): Compute the dilation factor at each block as dilation_growth ** (n % stack_size). Default: 8
-            channel_growth (int): Compute the output channels at each black as in_ch * channel_growth. Default: 1
-            channel_width (int): When channel_growth = 1 all blocks use convolutions with this many channels. Default: 32
-            stack_size (int): Number of blocks that constitute a single stack of blocks. Default: 10
-            norm_type (str): Type of normalization layer to use 'BatchNorm'
-    """
-
-    def __init__(self,
-                 ninputs=1,
-                 noutputs=2,
-                 nblocks=8,
-                 kernel_size=15,
-                 stride=2,
-                 dilation_growth=2,
-                 channel_growth=2,
-                 channel_width=32,
-                 stack_size=4,
-                 norm_type='BatchNorm',
-                 act_type='PReLU',
-                 **kwargs):
-        super(TcnModel, self).__init__()
-
-        self.blocks = torch.nn.ModuleList()
-        for n in range(nblocks):
-            in_ch = ninputs if n == 0 else out_ch
-            out_ch = channel_width if n == 0 else in_ch * channel_growth
-            dilation = dilation_growth ** (n % stack_size)
-
-            self.blocks.append(dsTCNBlock(
-                in_ch,
-                out_ch,
-                kernel_size,
-                stride,
-                dilation,
-                norm_type,
-                act_type
-            ))
-
-    def forward(self, x):
-
-        for block in self.blocks:
-            # print(x.shape)
-            x = block(x)
-
-
-        # output == None,256,1103 if input == None,1,282240(12.8 second)
-        return x
 
 class ClassificationModel(nn.Module):
     def __init__(self, num_features_in, num_anchors=1, num_classes=2, feature_size=256):

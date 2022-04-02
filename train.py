@@ -3,7 +3,7 @@ import torch
 from argparse import ArgumentParser
 
 from dataset import BeatDataset
-from models import TcnModel, Music2VecModel, RegressionModel, ClassificationModel
+from models import TcnModel, MusicDetectionModel, RegressionModel, ClassificationModel
 from anchors import Anchors
 from loss import FocalLoss
 
@@ -44,7 +44,7 @@ train_dataloader = torch.utils.data.DataLoader(train_dataset_list,
                                             collate_fn=make_batch)
 
 dict_args = vars(args)
-model = Music2VecModel().cuda()#TcnModel(**dict_args)
+model = MusicDetectionModel().cuda()#TcnModel(**dict_args)
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
 regressionModel = RegressionModel(256).cuda()

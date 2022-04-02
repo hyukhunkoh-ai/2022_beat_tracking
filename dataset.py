@@ -12,6 +12,46 @@ from torchaudio_augmentations import *
 # 왈츠는 30 BPM, 퀵스텝 50, 폭스트로트 30, 탱고 33/34이 표준으로 되어 있다. 소셜 리듬댄스는 26/50으로 폭이 넓다.
 # 그만큼 소셜 리듬댄스는 웬만한 음악이면 다 가능하다는 뜻도 된다. 그래서 편안한 파티용으로 많이 쓴다.
 
+def pad(x, max_length=12.8):
+    """
+    Pad inputs (on left/right and up to predefined length or max length in the batch)
+    Args:
+        x: input audio sequence (1, sample 개수)
+        max_length: maximum length of the returned list and optionally padding length
+    """
+
+    num_samples = x.shape[1]
+    attention_mask = np.ones(num_samples, dtype=np.int32)
+
+    difference = max_length*22050 - x
+    attention_mask = np.pad(attention_mask, (0, difference))
+    padding_shape = (0, difference)
+    padded_x = np.pad(num_samples, padding_shape, "constant", constant_values=-1)
+
+    return padded_x, attention_mask
+
+def get_audio(audio, audio_length, target_sr):
+    num_audio_samples = int(audio_length*sr)
+    audio, sr = torchaudio.load(audio)
+
+    audio = audio.float()
+    audio /= audio.abs().max() # normalize
+    anot = ''
+
+    # sampling control
+    if sr != target_sr:
+        audio = julius.resample_frac(audio, sr, target_sr)
+
+    if audio.size(dim=1) < num_audio_samples:
+        #audio = torch.nn.ConstantPad1d((0, num_audio_samples - audio.size(dim=1)), 0)(audio)
+        audio, attention_mask = pad(audio)
+    elif audio.size(dim=1) > num_audio_samples:
+        # todo: replace
+        audio = audio.narrow(1, 0, num_audio_samples)
+        attention_mask = None
+
+    return audio, attention_mask
+
 class BeatDataset():
     def __init__(self, path, audio_length=12.8, sr=22050):
         '''
@@ -27,36 +67,16 @@ class BeatDataset():
         self.label = list(glob(os.path.join(path, 'label', '*.beats')))
         self.audio_length = audio_length
         self.sr = sr
-        self.data = []
 
         with open(os.path.join(path, 'new_data.txt'), 'r') as fp:
             for line in fp.readlines():
                 self.data.append(line.strip('\n'))
-    
+
     def __len__(self):
         return len(self.label)
-    
+
     def __getitem__(self, idx):
-        num_audio_samples = int(self.audio_length*self.sr)
-        audio, sr = torchaudio.load(self.data[idx])
-
-        audio = audio.float()
-        audio /= audio.abs().max() # normalize
-        anot = ''
-        '''
-        ToDo
-        random crop 적용
-        anot 가공
-        '''
-
-        # sampling control
-        if sr != self.sr:
-            audio = julius.resample_frac(audio, sr, self.sr)
-
-        if audio.size(dim=1) < num_audio_samples:
-            audio = torch.nn.ConstantPad1d((0, num_audio_samples - audio.size(dim=1)), 0)(audio)
-        elif audio.size(dim=1) > num_audio_samples:
-            audio = audio.narrow(1, 0, num_audio_samples)
+        audio, attention_mask = get_audio(self.data[idx], self.audio_length, self.sr)
 
         annotations = []
 
@@ -80,6 +100,22 @@ class BeatDataset():
         start = int(random.random() * (item.shape[0] - crop_size))
         return item[start:(start+crop_size)]
 
+class SelfSupervisedDataset(Dataset):
+    def __init__(self, path, audio_length=12.8, sr=22050):
+        self.data =
+            list(glob(os.path.join(path, 'data', '*.wav'))) +
+            list(glob(os.path.join(path, 'data', '*.mp3')))
+
+        self.audio_length = audio_length
+        self.sr = sr
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        # todo: augment
+        audio, attention_mask = get_audio(self.data[idx], self.audio_length, self.sr)
+        return audio
 
 transforms_polarity = 0.8
 transforms_noise = 0.01
