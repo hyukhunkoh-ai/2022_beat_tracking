@@ -4,6 +4,7 @@ import librosa
 import julius
 import torchaudio
 import random
+import math
 from glob import glob
 from torch.utils.data import Dataset
 from torchaudio_augmentations import *
@@ -30,9 +31,9 @@ def pad(x, max_length=12.8):
 
     return padded_x, attention_mask
 
-def get_audio(audio, audio_length, target_sr):
-    num_audio_samples = int(audio_length*sr)
-    audio, sr = torchaudio.load(audio)
+def get_audio(file_path, audio_length=12.8, target_sr=22050):
+    num_audio_samples = int(audio_length*target_sr)
+    audio, sr = torchaudio.load(file_path)
 
     audio = audio.float()
     audio /= audio.abs().max() # normalize
@@ -70,21 +71,31 @@ class BeatDataset():
 
         with open(os.path.join(path, 'new_data.txt'), 'r') as fp:
             for line in fp.readlines():
-                self.data.append(line.strip('\n'))
+                #self.data.append(line.strip('\n'))
+                file_path = line.strip('\n')
+                loaded_audio, loaded_audio_sr = torchaudio.load(file_path)
+                loaded_audio_length = loaded_audio.size(dim=1) // loaded_audio_sr
+
+                audio_slice_count = math.ceil(loaded_audio_length / audio_length)
+                audio_slice_remainder = loaded_audio_length % audio_length
+                audio_slice_overlap = audio_slice_remainder / audio_slice_count
+
+                for slice_index in range(audio_slice_count):
+                    self.data.append()
 
     def __len__(self):
-        return len(self.label)
+        #return len(self.label)
+        return self.audio_slice_count
 
     def __getitem__(self, idx):
-        audio, attention_mask = get_audio(self.data[idx], self.audio_length, self.sr)
+        audio = get_audio(self.data[idx], self.audio_length, self.sr)
 
         annotations = []
 
         filename = self.label[idx]
-        start_time = 0
 
         with open(filename, 'r') as fp:
-            for index, line in enumerate(fp.readlines()):
+            for _, line in enumerate(fp.readlines()):
                 time_start, time_end, is_downbeat = line.strip('\n').split('\t')
                 time_start = round(float(time_start), 4)
                 time_end = round(float(time_end), 4)
@@ -102,9 +113,7 @@ class BeatDataset():
 
 class SelfSupervisedDataset(Dataset):
     def __init__(self, path, audio_length=12.8, sr=22050):
-        self.data =
-            list(glob(os.path.join(path, 'data', '*.wav'))) +
-            list(glob(os.path.join(path, 'data', '*.mp3')))
+        self.data = list(glob(os.path.join(path, 'data', '*.wav'))) + list(glob(os.path.join(path, 'data', '*.mp3')))
 
         self.audio_length = audio_length
         self.sr = sr
