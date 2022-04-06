@@ -33,11 +33,13 @@ from compute_mask_idx import _compute_mask_indices
 class Music2VecModel(Module):
     def __init__(self, out_features=768, num_layers=12):
         super().__init__()
+        # input: (22050*12.8) -> 1280
         # wavebeat의 channel 늘리는 것과 wav2vec2.0에서 channel 유지시키는 것을 mix했고 2019 tcn 모델의 dilated 부분을 참고했다
         # dilated는 128까지
         # cnn block 개수는 wav2vec와 동일함
         # NOTE!!!! 마지막 block에서 padding을 하나 줄임 (1283 -> 1280)
         # out_features=768는 transformer의 embedding size
+        # todo: change stride, from 5?
         shapes = [
             (32, 10, 11),
             (64, 3, 5),
