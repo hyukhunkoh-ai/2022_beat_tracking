@@ -55,6 +55,7 @@ def get_audio(file_path, audio_length=12.8, target_sr=22050):
     return audio, attention_mask
 
 def get_audio_slices(audio_file_path, label_file_path, audio_length=12.8, target_sr=22050):
+    print("start")
     audio_slices = []
     annotations = []
 
@@ -87,7 +88,14 @@ def get_audio_slices(audio_file_path, label_file_path, audio_length=12.8, target
         slice_index = 0
         slice_annotations = []
         with open(label_file_path, 'r') as fp:
-            for _, line in enumerate(fp.readlines()):
+            line_index = 0
+            next_line_index = 0
+            lines = fp.readlines()
+
+            while line_index < len(lines):
+                line = lines[line_index]
+
+                print(label_file_path, len(slice_start_times), slice_index, loaded_audio_length)
                 current_slice_start_time = slice_start_times[slice_index]/target_sr
                 current_slice_end_time = current_slice_start_time + audio_length
 
@@ -95,22 +103,29 @@ def get_audio_slices(audio_file_path, label_file_path, audio_length=12.8, target
                 time = round(float(time), 4)
                 beat_number = int(beat_number)
 
+                relative_time = time - current_slice_start_time
                 is_downbeat = 1 if beat_number == 1 else 0
 
-                while time > current_slice_end_time and slice_index + 1 < slice_count:
-                    slice_index += 1
-                    current_slice_start_time = slice_start_times[slice_index]/target_sr
-                    current_slice_end_time = current_slice_start_time + audio_length
+                # 오디오 슬라이드 간에 겹치는 부분이 있으므로 다음 비트의 첫 비트 인덱스를 미리 저장함
+                if relative_time > audio_length - slice_overlap and next_line_index == 0:
+                    next_line_index = line_index
 
-                    if len(slice_annotations) > 0:
-                        print("new slice")
-                        annotations.append(slice_annotations)
-                        slice_annotations.clear()
-
-                if time <= audio_length:
-                    print("new annotation")
-                    relative_time = time - current_slice_start_time
+                if relative_time <= audio_length:
                     slice_annotations.append([relative_time, is_downbeat])
+                else:
+                    # slice annotation을 전체 annotation 리스트에 추가하여 다음 슬라이드로 넘어가게 함
+                    annotations.append(slice_annotations)
+                    slice_annotations.clear()
+
+                    line_index = next_line_index
+                    next_line_index = 0
+
+                    slice_index += 1
+
+                line_index += 1
+
+        # 마지막 slice annotation을 전체 annotation 리스트에 추가함
+        annotations.append(slice_annotations)
 
     return audio_slices, annotations
 
