@@ -5,6 +5,7 @@ import julius
 import torchaudio
 import random
 import math
+import re
 import numpy as np
 from glob import glob
 from torch.utils.data import Dataset
@@ -55,12 +56,11 @@ def get_audio(file_path, audio_length=12.8, target_sr=22050):
     return audio, attention_mask
 
 def get_audio_slices(audio_file_path, label_file_path, audio_length=12.8, target_sr=22050):
-    print("start")
     audio_slices = []
     annotations = []
 
     loaded_audio, loaded_audio_sr = torchaudio.load(audio_file_path)
-    loaded_audio_length = loaded_audio.size(dim=1) // loaded_audio_sr
+    loaded_audio_length = loaded_audio.size(dim=1) / loaded_audio_sr
     target_audio_length = int(audio_length*target_sr)
 
     # sampling control
@@ -80,7 +80,7 @@ def get_audio_slices(audio_file_path, label_file_path, audio_length=12.8, target
         slice_start_times = []
 
         for slice_index in range(slice_count):
-            slice_start = math.ceil((audio_length - slice_overlap)*slice_index*target_sr)
+            slice_start = int((audio_length - slice_overlap)*slice_index*target_sr)
             slice_length = int(audio_length*target_sr)
             audio_slices.append(loaded_audio.narrow(1, slice_start, slice_length))
             slice_start_times.append(slice_start)
@@ -95,11 +95,10 @@ def get_audio_slices(audio_file_path, label_file_path, audio_length=12.8, target
             while line_index < len(lines):
                 line = lines[line_index]
 
-                print(label_file_path, len(slice_start_times), slice_index, loaded_audio_length)
                 current_slice_start_time = slice_start_times[slice_index]/target_sr
                 current_slice_end_time = current_slice_start_time + audio_length
 
-                time, beat_number = line.strip('\n').split(' ')
+                time, beat_number = re.findall(r"[/\d+\.?\d*/]+", line.strip('\n'))
                 time = round(float(time), 4)
                 beat_number = int(beat_number)
 
@@ -165,16 +164,13 @@ class BeatDataset():
                         sr
                     )
 
-                    print("slice", len(new_audio_slices))
-                    print("annotation", len(new_annotations))
-
                     self.audio_slices += new_audio_slices
                     self.annotations += new_annotations
 
         print("Finishing data processing")
 
     def __len__(self):
-        return len(self.data)
+        return len(self.audio_slices)
 
     def __getitem__(self, idx):
         # audio = get_audio(self.data[idx], self.audio_length, self.sr)
