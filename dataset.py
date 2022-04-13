@@ -48,7 +48,6 @@ def slice_label(label_file_path, slice_start_times, audio_length, target_sr, sli
             line = lines[line_index]
 
             current_slice_start_time = slice_start_times[slice_index]/target_sr
-            current_slice_end_time = current_slice_start_time + audio_length
 
             time, beat_number = re.findall(r"[/\d+\.?\d*/]+", line.strip('\n'))
             time = float(time)
