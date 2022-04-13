@@ -1,11 +1,9 @@
 from sklearn.linear_model import MultiTaskElasticNet
 import torch
 from argparse import ArgumentParser
-
 from dataset import BeatDataset
-from models import MusicDetectionModel, RegressionModel, ClassificationModel
-from anchors import Anchors
-from loss import FocalLoss
+from models.supervised import MusicDetectionModel
+from models.loss import RegressionModel, ClassificationModel, FocalLoss
 
 parser = ArgumentParser()
 parser.add_argument('--ballroom_dir', type=str, default='./datapath/ballroom')

@@ -2,6 +2,109 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+def get_activation(act_type,ch=None):
+    """ Helper function to construct activation functions by a string.
+    Args:
+        act_type (str): One of 'ReLU', 'PReLU', 'SELU', 'ELU'.
+        ch (int, optional): Number of channels to use for PReLU.
+
+    Returns:
+        torch.nn.Module activation function.
+    """
+
+    if act_type == "PReLU":
+        return nn.PReLU(ch)
+    elif act_type == "ReLU":
+        return nn.ReLU()
+    elif act_type == "SELU":
+        return nn.SELU()
+    elif act_type == "ELU":
+        return nn.ELU()
+
+class ClassificationModel(nn.Module):
+    def __init__(self, num_features_in, num_anchors=1, num_classes=2, feature_size=256):
+        super(ClassificationModel, self).__init__()
+
+        self.num_classes = num_classes
+        self.num_anchors = num_anchors
+
+        self.conv1 = nn.Conv1d(num_features_in, feature_size, kernel_size=3, padding=1)
+        self.act1 = nn.ReLU()
+
+        self.conv2 = nn.Conv1d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.act2 = nn.ReLU()
+
+        self.conv3 = nn.Conv1d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.act3 = nn.ReLU()
+
+        self.conv4 = nn.Conv1d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.act4 = nn.ReLU()
+
+        self.output = nn.Conv1d(feature_size, num_anchors * num_classes, kernel_size=3, padding=1)
+        self.output_act = nn.Sigmoid()
+
+    def forward(self, x):
+        out = self.conv1(x)
+        out = self.act1(out)
+
+        out = self.conv2(out)
+        out = self.act2(out)
+
+        out = self.conv3(out)
+        out = self.act3(out)
+
+        out = self.conv4(out)
+        out = self.act4(out)
+
+        out = self.output(out)
+        out = self.output_act(out)
+
+        out1 = out.permute(0, 2, 1)
+
+        batch_size, length, channels = out1.shape
+
+        out2 = out1.view(batch_size, length, self.num_anchors, self.num_classes)
+
+        return out2.contiguous().view(x.shape[0], -1, self.num_classes)
+
+class RegressionModel(nn.Module):
+    def __init__(self, num_features_in, num_anchors=1, feature_size=256):
+        super(RegressionModel, self).__init__()
+
+        self.conv1 = nn.Conv1d(num_features_in, feature_size, kernel_size=3, padding=1)
+        self.act1 = nn.ReLU()
+
+        self.conv2 = nn.Conv1d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.act2 = nn.ReLU()
+
+        self.conv3 = nn.Conv1d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.act3 = nn.ReLU()
+
+        self.conv4 = nn.Conv1d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.act4 = nn.ReLU()
+
+        self.output = nn.Conv1d(feature_size, num_anchors * 1, kernel_size=3, padding=1)
+
+    def forward(self, x):
+        print("regression forward", x.shape)
+        out = self.conv1(x)
+        out = self.act1(out)
+
+        out = self.conv2(out)
+        out = self.act2(out)
+
+        out = self.conv3(out)
+        out = self.act3(out)
+
+        out = self.conv4(out)
+        out = self.act4(out)
+
+        out = self.output(out)
+
+        out = out.permute(0, 2, 1)
+
+        return out.contiguous().view(out.shape[0], -1, 1)
+
 class FocalLoss(nn.Module):
     #def __init__(self):
 
@@ -88,5 +191,3 @@ class FocalLoss(nn.Module):
             regression_losses.append(regression_loss.mean())
 
         return torch.stack(classification_losses).mean(dim=0, keepdim=True), torch.stack(regression_losses).mean(dim=0, keepdim=True)
-
-

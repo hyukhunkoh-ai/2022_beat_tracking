@@ -33,29 +33,73 @@ def pad(x, max_length=12.8):
 
     return padded_x, attention_mask
 
-def get_audio(file_path, audio_length=12.8, target_sr=22050):
-    num_audio_samples = int(audio_length*target_sr)
-    audio, sr = torchaudio.load(file_path)
+def slice_label(label_file_path, slice_start_times, audio_length, target_sr, slice_overlap):
+    annotations = []
 
-    audio = audio.float()
-    audio /= audio.abs().max() # normalize
-    anot = ''
+    slice_index = 0
+    slice_annotations = []
 
-    # sampling control
-    if sr != target_sr:
-        audio = julius.resample_frac(audio, sr, target_sr)
+    with open(label_file_path, 'r') as fp:
+        line_index = 0
+        next_line_index = 0
+        lines = fp.readlines()
 
-    if audio.size(dim=1) < num_audio_samples:
-        #audio = torch.nn.ConstantPad1d((0, num_audio_samples - audio.size(dim=1)), 0)(audio)
-        audio, attention_mask = pad(audio)
-    elif audio.size(dim=1) > num_audio_samples:
-        # todo: replace
-        audio = audio.narrow(1, 0, num_audio_samples)
-        attention_mask = None
+        while line_index < len(lines):
+            line = lines[line_index]
 
-    return audio, attention_mask
+            current_slice_start_time = slice_start_times[slice_index]/target_sr
+            current_slice_end_time = current_slice_start_time + audio_length
 
-def get_audio_slices(audio_file_path, label_file_path, audio_length=12.8, target_sr=22050):
+            time, beat_number = re.findall(r"[/\d+\.?\d*/]+", line.strip('\n'))
+            time = float(time)
+            beat_number = int(beat_number)
+
+            relative_time = round(time - current_slice_start_time, 4)
+            is_downbeat = 1 if beat_number == 1 else 0
+
+            # 오디오 슬라이드 간에 겹치는 부분이 있으므로 다음 비트의 첫 비트 인덱스를 미리 저장함
+            if relative_time > audio_length - slice_overlap and next_line_index == 0:
+                next_line_index = line_index
+
+            if relative_time <= audio_length:
+                slice_annotations.append([relative_time, is_downbeat])
+                line_index += 1
+
+            reached_end_of_file = line_index + 1 == len(lines)
+            if relative_time > audio_length or reached_end_of_file:
+                # slice annotation을 전체 annotation 리스트에 추가하여 다음 슬라이드로 넘어가게 함
+                annotations.append(slice_annotations[:])
+                slice_annotations.clear()
+
+                line_index = next_line_index
+                next_line_index = 0
+
+                if reached_end_of_file:
+                    break
+                
+                slice_index += 1
+
+    return annotations
+
+def slice_audio(loaded_audio, loaded_audio_length, audio_length, target_sr):
+    audio_slices = []
+
+    slice_count = math.ceil(loaded_audio_length / audio_length)
+    slice_remainder = loaded_audio_length % audio_length
+    slice_overlap = (audio_length - slice_remainder)/(slice_count - 1)
+
+    slice_start_times = []
+
+    # audio slice processing
+    for slice_index in range(slice_count):
+        slice_start = int((audio_length - slice_overlap)*slice_index*target_sr)
+        slice_length = int(audio_length*target_sr)
+        audio_slices.append(loaded_audio.narrow(1, slice_start, slice_length))
+        slice_start_times.append(slice_start)
+
+    return audio_slices, slice_start_times, slice_overlap
+
+def get_slices(audio_file_path, label_file_path, audio_length, target_sr):
     audio_slices = []
     annotations = []
 
@@ -73,143 +117,98 @@ def get_audio_slices(audio_file_path, label_file_path, audio_length=12.8, target
     elif loaded_audio.size(dim=1) > target_audio_length:
         attention_mask = None
 
-        slice_count = math.ceil(loaded_audio_length / audio_length)
-        slice_remainder = loaded_audio_length % audio_length
-        slice_overlap = (audio_length - slice_remainder)/(slice_count - 1)
+        audio_slices, slice_start_times, slice_overlap = slice_audio(
+            loaded_audio,
+            loaded_audio_length,
+            audio_length,
+            target_sr
+        )
 
-        slice_start_times = []
+        if label_file_path != None:
+            annotations = slice_label(
+                label_file_path,
+                slice_start_times,
+                audio_length,
+                target_sr,
+                slice_overlap
+            )
 
-        for slice_index in range(slice_count):
-            slice_start = int((audio_length - slice_overlap)*slice_index*target_sr)
-            slice_length = int(audio_length*target_sr)
-            audio_slices.append(loaded_audio.narrow(1, slice_start, slice_length))
-            slice_start_times.append(slice_start)
+    return audio_slices, annotations
 
-        slice_index = 0
-        slice_annotations = []
-        with open(label_file_path, 'r') as fp:
-            line_index = 0
-            next_line_index = 0
-            lines = fp.readlines()
+def process_pretrain_data(audio_file_paths, audio_length, sr):
+    audio_slices = []
 
-            while line_index < len(lines):
-                line = lines[line_index]
+    for audio_file_path in audio_file_paths:
+        new_audio_slices = get_slices(audio_file_path, None, audio_length, sr)
+        audio_slices += new_audio_slices
 
-                current_slice_start_time = slice_start_times[slice_index]/target_sr
-                current_slice_end_time = current_slice_start_time + audio_length
+    return audio_slices
 
-                time, beat_number = re.findall(r"[/\d+\.?\d*/]+", line.strip('\n'))
-                time = round(float(time), 4)
-                beat_number = int(beat_number)
+def process_training_data(audio_file_paths, audio_length, sr):
+    audio_slices = []
+    annotations = []
 
-                relative_time = time - current_slice_start_time
-                is_downbeat = 1 if beat_number == 1 else 0
+    '''
+    --datapath
+        -- dataname
+            -- data
+                -- *.wav
+            -- label
+                -- *.txt
+                -- *.beats
+    '''
+    for audio_file_path in audio_file_paths:
+        if audio_file_path.find(".wav"):
+            label_file_path = audio_file_path.replace(".wav", ".beats")
+        elif audio_file_path.find(".mp3"):
+            label_file_path = audio_file_path.replace(".mp3", ".beats")
 
-                # 오디오 슬라이드 간에 겹치는 부분이 있으므로 다음 비트의 첫 비트 인덱스를 미리 저장함
-                if relative_time > audio_length - slice_overlap and next_line_index == 0:
-                    next_line_index = line_index
+        if label_file_path:
+            label_file_path = label_file_path.replace("/data/", "/label/")
+            new_audio_slices, new_annotations = get_slices(
+                audio_file_path,
+                label_file_path,
+                audio_length,
+                sr
+            )
 
-                if relative_time <= audio_length:
-                    slice_annotations.append([relative_time, is_downbeat])
-                else:
-                    # slice annotation을 전체 annotation 리스트에 추가하여 다음 슬라이드로 넘어가게 함
-                    annotations.append(slice_annotations)
-                    slice_annotations.clear()
-
-                    line_index = next_line_index
-                    next_line_index = 0
-
-                    slice_index += 1
-
-                line_index += 1
-
-        # 마지막 slice annotation을 전체 annotation 리스트에 추가함
-        annotations.append(slice_annotations)
+            audio_slices += new_audio_slices
+            annotations += new_annotations
 
     return audio_slices, annotations
 
 class BeatDataset():
     def __init__(self, path, audio_length=12.8, sr=22050):
-        '''
-        --datapath
-            -- dataname
-                -- data
-                    -- *.wav
-                -- label
-                    -- *.txt
-                    -- *.beats
-        '''
-        self.data = []
-        self.label = list(glob(os.path.join(path, 'label', '*.beats')))
-        self.audio_length = audio_length
-        self.sr = sr
-
         self.audio_slices = []
         self.annotations = []
-        print("Starting data processing")
+
         with open(os.path.join(path, 'new_data.txt'), 'r') as fp:
-            for line in fp.readlines():
-                audio_file_path = line.strip('\n')
-                if audio_file_path.find(".wav"):
-                    label_file_path = audio_file_path.replace(".wav", ".beats")
-                elif audio_file_path.find(".mp3"):
-                    label_file_path = audio_file_path.replace(".mp3", ".beats")
-
-                if label_file_path:
-                    label_file_path = label_file_path.replace("/data/", "/label/")
-                    new_audio_slices, new_annotations = get_audio_slices(
-                        audio_file_path,
-                        label_file_path,
-                        audio_length,
-                        sr
-                    )
-
-                    self.audio_slices += new_audio_slices
-                    self.annotations += new_annotations
-
-        print("Finishing data processing")
+            audio_file_paths = [line.strip('\n') for line in fp.readlines()]
+            self.audio_slices, self.annotations = process_training_data(audio_file_paths, audio_length, sr)
 
     def __len__(self):
         return len(self.audio_slices)
 
     def __getitem__(self, idx):
-        # audio = get_audio(self.data[idx], self.audio_length, self.sr)
-
-        # annotations = []
-
-        # filename = self.label[idx]
-
-        # with open(filename, 'r') as fp:
-        #     for _, line in enumerate(fp.readlines()):
-        #         time_start, time_end, is_downbeat = line.strip('\n').split('\t')
-        #         time_start = round(float(time_start), 4)
-        #         time_end = round(float(time_end), 4)
-        #         is_downbeat = int(is_downbeat)
-
-        #         if time_start < self.audio_length or time_end <= self.audio_length:
-        #             annotations.append([time_start, time_end, is_downbeat])
-
-        # return audio, annotations
         return self.audio_slices[idx], self.annotations[idx]
         
-    def random_crop(self,item):
-        crop_size = int(self.sequence_len * self.sr)
-        start = int(random.random() * (item.shape[0] - crop_size))
-        return item[start:(start+crop_size)]
+    # def random_crop(self,item):
+    #     crop_size = int(self.sequence_len * self.sr)
+    #     start = int(random.random() * (item.shape[0] - crop_size))
+    #     return item[start:(start+crop_size)]
 
 class SelfSupervisedDataset(Dataset):
     def __init__(self, path, audio_length=12.8, sr=22050):
-        self.data = list(glob(os.path.join(path, 'data', '*.wav'))) + list(glob(os.path.join(path, 'data', '*.mp3')))
-
-        self.audio_length = audio_length
-        self.sr = sr
+        self.audio_slices = process_pretrain_data(
+            list(glob(os.path.join(path, 'data', '*.wav'))) + list(glob(os.path.join(path, 'data', '*.mp3'))),
+            audio_length,
+            sr
+        )
 
     def __len__(self):
-        return len(self.data)
+        return len(self.audio_slices)
 
     def __getitem__(self, idx):
-        # todo: augment
-        audio, attention_mask = get_audio(self.data[idx], self.audio_length, self.sr)
         return audio
 
 transforms_polarity = 0.8
