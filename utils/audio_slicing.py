@@ -83,7 +83,7 @@ def get_slices(audio_file_path, label_file_path, audio_length, target_sr):
         loaded_audio = julius.resample_frac(loaded_audio, loaded_audio_sr, target_sr)
 
     if loaded_audio.size(dim=1) < target_audio_length:
-        loaded_audio, attention_mask = pad(loaded_audio)
+        loaded_audio, attention_mask = pad(loaded_audio, audio_length, target_sr)
         audio_slices.append(loaded_audio)
         times.append(loaded_audio_length)
     elif loaded_audio.size(dim=1) > target_audio_length:
