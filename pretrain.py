@@ -3,8 +3,9 @@ import os
 import soundfile as sf
 import numpy as np
 from transformers import Wav2Vec2FeatureExtractor
-from wav2vec2 import Wav2Vec2Model
-from torch.utils.data import DataLoader
+from dataset import SelfSupervisedDataset
+from argparse import ArgumentParser
+from models.self_supervised import Music2VecModel
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # epochs = 100000
@@ -25,14 +26,41 @@ bs = 5 # 5 * 4 = 20
 
 #train
 
+parser = ArgumentParser()
+parser.add_argument('--unlabel_dir', type=str, default='./datapath/unlabel')
+parser.add_argument('--epochs', type=int, default=100)
+parser.add_argument('--lr', type=float, default=1e-3)
 
+args = parser.parse_args()
 
-model = Wav2Vec2Model()
+dataset_types = ["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "fma_30", "openmic_10"]
+train_datasets = []
+
+num_files = 0
+
+for dataset_type in dataset_types:
+    audio_dir = os.path.join(args.unlabel_dir, dataset_type)
+    dataset = SelfSupervisedDataset(audio_dir)
+
+    train_datasets.append(dataset)
+    num_files += len(dataset)
+
+steps_per_epoch = num_files // bs + 1
+
+train_dataset_list = torch.utils.data.ConcatDataset(train_datasets)
+train_dataloader = torch.utils.data.DataLoader(train_dataset_list,
+                                            shuffle=True,
+                                            batch_size=4,
+                                            num_workers=0,
+                                            pin_memory=True)#,
+                                            #collate_fn=make_batch)
+
+model = Music2VecModel()
 optim = torch.optim.Adam(model.parameters(), lr=0.0001)
 scheduler = torch.optim.lr_scheduler.OneCycleLR(
     optim,
     max_lr=0.0005,
-    steps_per_epoch=per_bs,
+    steps_per_epoch=steps_per_epoch,
     epochs=epochs,
     pct_start=0.08
 )
@@ -41,15 +69,19 @@ for epoch in range(epochs):
     total_loss = []
 
     # to-do: 2개(audio seq, length) 뽑아야함
-    for x in train_dl:
-        dx = x[0] # to-do: add time
+    for data in train_dataloader:
+        #dx = x[0] # to-do: add time
+        #print(x)
+        inputs, lengths = data
 
 
         # device 반드시 넣어야함
-        dx = dx.to(device)
+        inputs = inputs.to(device)
+        lengths = lengths.to(device)
+
         model.to(device)
         optim.zero_grad()
-        loss = model.calculate_loss(dx, ) #to do: length, attention mask 넣어야함 
+        loss = model.calculate_loss(inputs, lengths, True) #to do: length, attention mask 넣어야함 
         total_loss.append(loss.item())
         loss.backward()
         optim.step()

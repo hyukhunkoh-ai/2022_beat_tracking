@@ -34,11 +34,8 @@ class BeatDataset():
 
 class SelfSupervisedDataset(Dataset):
     def __init__(self, path, audio_length=12.8, sr=22050):
-        self.audio_slices, self.times = process_pretrain_data(
-            list(glob(os.path.join(path, 'data', '*.wav'))) + list(glob(os.path.join(path, 'data', '*.mp3'))),
-            audio_length,
-            sr
-        )
+        audio_file_paths = list(glob(os.path.join(path, '*.wav'))) + list(glob(os.path.join(path, '*.mp3')))
+        self.audio_slices, self.times = process_pretrain_data(audio_file_paths, audio_length, sr)
 
     def __len__(self):
         return len(self.audio_slices)

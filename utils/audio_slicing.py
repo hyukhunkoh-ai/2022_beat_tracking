@@ -96,6 +96,9 @@ def get_slices(audio_file_path, label_file_path, audio_length, target_sr):
             target_sr
         )
 
+        slice_count = len(audio_slices)
+        times = [audio_length] * slice_count
+
         if label_file_path != None:
             annotations = slice_label(
                 label_file_path,
@@ -104,8 +107,5 @@ def get_slices(audio_file_path, label_file_path, audio_length, target_sr):
                 target_sr,
                 slice_overlap
             )
-
-            slice_count = len(audio_slices)
-            times = [audio_length] * slice_count
 
     return audio_slices, annotations, times

@@ -4,7 +4,7 @@ from torch import Tensor
 from typing import Optional
 from vector_quantizer import Wav2Vec2GumbelVectorQuantizer
 from compute_mask_idx import _compute_mask_indices
-from components import ConvLayerBlock
+from models.components import ConvLayerBlock, SelfAttention, FeedForward, EncoderLayer
 
 '''
 >>> torch.Size([32])

@@ -11,6 +11,7 @@ class ConvLayerBlock(nn.Module):
             kernel_size: int,
             stride: int,
             dilation: int,
+            padding: int,
             bias: bool,
             layer_norm: Optional[nn.Module],
     ):
@@ -24,6 +25,7 @@ class ConvLayerBlock(nn.Module):
             kernel_size=kernel_size,
             stride=stride,
             dilation=dilation,
+            padding=padding,
             bias=bias,
         )
 
