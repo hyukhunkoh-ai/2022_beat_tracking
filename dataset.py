@@ -1,147 +1,27 @@
 import torch
 import os
 import librosa
-import julius
-import torchaudio
 import random
-import math
-import re
 import numpy as np
 from glob import glob
 from torch.utils.data import Dataset
 from torchaudio_augmentations import *
+from utils.audio_slicing import get_slices
 # 룸바는 26/27이 표준이다. 차차차는 28/30, 자이브 42/44, 삼바는 50/52, 파소도블레는 60/62 BPM이다. 숫자가 높을수록 빠르다.
 #
 # 왈츠는 30 BPM, 퀵스텝 50, 폭스트로트 30, 탱고 33/34이 표준으로 되어 있다. 소셜 리듬댄스는 26/50으로 폭이 넓다.
 # 그만큼 소셜 리듬댄스는 웬만한 음악이면 다 가능하다는 뜻도 된다. 그래서 편안한 파티용으로 많이 쓴다.
 
-def pad(x, max_length=12.8):
-    """
-    Pad inputs (on left/right and up to predefined length or max length in the batch)
-    Args:
-        x: input audio sequence (1, sample 개수)
-        max_length: maximum length of the returned list and optionally padding length
-    """
-
-    num_samples = x.shape[1]
-    attention_mask = np.ones(num_samples, dtype=np.int32)
-
-    difference = max_length*22050 - x
-    attention_mask = np.pad(attention_mask, (0, difference))
-    padding_shape = (0, difference)
-    padded_x = np.pad(num_samples, padding_shape, "constant", constant_values=-1)
-
-    return padded_x, attention_mask
-
-def slice_label(label_file_path, slice_start_times, audio_length, target_sr, slice_overlap):
-    annotations = []
-
-    slice_index = 0
-    slice_annotations = []
-
-    with open(label_file_path, 'r') as fp:
-        line_index = 0
-        next_line_index = 0
-        lines = fp.readlines()
-
-        while line_index < len(lines):
-            line = lines[line_index]
-
-            current_slice_start_time = slice_start_times[slice_index]/target_sr
-
-            time, beat_number = re.findall(r"[/\d+\.?\d*/]+", line.strip('\n'))
-            time = float(time)
-            beat_number = int(beat_number)
-
-            relative_time = round(time - current_slice_start_time, 4)
-            is_downbeat = 1 if beat_number == 1 else 0
-
-            # 오디오 슬라이드 간에 겹치는 부분이 있으므로 다음 비트의 첫 비트 인덱스를 미리 저장함
-            if relative_time > audio_length - slice_overlap and next_line_index == 0:
-                next_line_index = line_index
-
-            if relative_time <= audio_length:
-                slice_annotations.append([relative_time, is_downbeat])
-                line_index += 1
-
-            reached_end_of_file = line_index + 1 == len(lines)
-            if relative_time > audio_length or reached_end_of_file:
-                # slice annotation을 전체 annotation 리스트에 추가하여 다음 슬라이드로 넘어가게 함
-                annotations.append(slice_annotations[:])
-                slice_annotations.clear()
-
-                line_index = next_line_index
-                next_line_index = 0
-
-                if reached_end_of_file:
-                    break
-                
-                slice_index += 1
-
-    return annotations
-
-def slice_audio(loaded_audio, loaded_audio_length, audio_length, target_sr):
-    audio_slices = []
-
-    slice_count = math.ceil(loaded_audio_length / audio_length)
-    slice_remainder = loaded_audio_length % audio_length
-    slice_overlap = (audio_length - slice_remainder)/(slice_count - 1)
-
-    slice_start_times = []
-
-    # audio slice processing
-    for slice_index in range(slice_count):
-        slice_start = int((audio_length - slice_overlap)*slice_index*target_sr)
-        slice_length = int(audio_length*target_sr)
-        audio_slices.append(loaded_audio.narrow(1, slice_start, slice_length))
-        slice_start_times.append(slice_start)
-
-    return audio_slices, slice_start_times, slice_overlap
-
-def get_slices(audio_file_path, label_file_path, audio_length, target_sr):
-    audio_slices = []
-    annotations = []
-
-    loaded_audio, loaded_audio_sr = torchaudio.load(audio_file_path)
-    loaded_audio_length = loaded_audio.size(dim=1) / loaded_audio_sr
-    target_audio_length = int(audio_length*target_sr)
-
-    # sampling control
-    if loaded_audio_sr != target_sr:
-        loaded_audio = julius.resample_frac(loaded_audio, loaded_audio_sr, target_sr)
-
-    if loaded_audio.size(dim=1) < target_audio_length:
-        loaded_audio, attention_mask = pad(loaded_audio)
-        audio_slices.append(loaded_audio)
-    elif loaded_audio.size(dim=1) > target_audio_length:
-        attention_mask = None
-
-        audio_slices, slice_start_times, slice_overlap = slice_audio(
-            loaded_audio,
-            loaded_audio_length,
-            audio_length,
-            target_sr
-        )
-
-        if label_file_path != None:
-            annotations = slice_label(
-                label_file_path,
-                slice_start_times,
-                audio_length,
-                target_sr,
-                slice_overlap
-            )
-
-    return audio_slices, annotations
-
 def process_pretrain_data(audio_file_paths, audio_length, sr):
     audio_slices = []
+    times = []
 
     for audio_file_path in audio_file_paths:
-        new_audio_slices = get_slices(audio_file_path, None, audio_length, sr)
+        new_audio_slices, _, new_times = get_slices(audio_file_path, None, audio_length, sr)
         audio_slices += new_audio_slices
+        times += new_times
 
-    return audio_slices
+    return audio_slices, times
 
 def process_training_data(audio_file_paths, audio_length, sr):
     audio_slices = []
@@ -164,7 +44,7 @@ def process_training_data(audio_file_paths, audio_length, sr):
 
         if label_file_path:
             label_file_path = label_file_path.replace("/data/", "/label/")
-            new_audio_slices, new_annotations = get_slices(
+            new_audio_slices, new_annotations, _ = get_slices(
                 audio_file_path,
                 label_file_path,
                 audio_length,
@@ -198,7 +78,7 @@ class BeatDataset():
 
 class SelfSupervisedDataset(Dataset):
     def __init__(self, path, audio_length=12.8, sr=22050):
-        self.audio_slices = process_pretrain_data(
+        self.audio_slices, self.times = process_pretrain_data(
             list(glob(os.path.join(path, 'data', '*.wav'))) + list(glob(os.path.join(path, 'data', '*.mp3'))),
             audio_length,
             sr
@@ -208,7 +88,7 @@ class SelfSupervisedDataset(Dataset):
         return len(self.audio_slices)
 
     def __getitem__(self, idx):
-        return audio
+        return self.audio_slices[idx], self.times[idx]
 
 transforms_polarity = 0.8
 transforms_noise = 0.01

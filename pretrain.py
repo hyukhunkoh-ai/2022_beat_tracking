@@ -25,10 +25,17 @@ bs = 5 # 5 * 4 = 20
 
 #train
 
+
+
 model = Wav2Vec2Model()
 optim = torch.optim.Adam(model.parameters(), lr=0.0001)
-scheduler = torch.optim.lr_scheduler.OneCycleLR(optim, max_lr=0.0005,steps_per_epoch=per_bs, epochs=epochs, pct_start=0.08)
-
+scheduler = torch.optim.lr_scheduler.OneCycleLR(
+    optim,
+    max_lr=0.0005,
+    steps_per_epoch=per_bs,
+    epochs=epochs,
+    pct_start=0.08
+)
 
 for epoch in range(epochs):
     total_loss = []
