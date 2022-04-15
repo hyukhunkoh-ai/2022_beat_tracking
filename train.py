@@ -41,12 +41,14 @@ train_dataloader = torch.utils.data.DataLoader(train_dataset_list,
                                             pin_memory=True,
                                             collate_fn=make_batch)
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 dict_args = vars(args)
-model = MusicDetectionModel().cuda()#TcnModel(**dict_args)
+model = MusicDetectionModel()
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
-regressionModel = RegressionModel(256).cuda()
-classificationModel = ClassificationModel(256).cuda()
+regressionModel = RegressionModel(256)
+classificationModel = ClassificationModel(256)
 #anchorsModel = Anchors(audio_length=12.8, sr=22050, num_anchors=1280)
 focalLoss = FocalLoss()
 
@@ -54,8 +56,8 @@ for epoch in range(args.epochs):
     running_loss = 0.0
     for index, data in enumerate(train_dataloader, 0):
         inputs, annotations = data
-        inputs = inputs.cuda()
-        annotations = annotations.cuda()
+        inputs = inputs.to(device)
+        annotations = annotations.to(device)
 
         optimizer.zero_grad()
         #outputs = torch.randn(16, 1280, 256).cuda()
