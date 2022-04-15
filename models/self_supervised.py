@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch import Tensor
+import numpy as np
 from typing import Optional
 from vector_quantizer import Wav2Vec2GumbelVectorQuantizer
 from compute_mask_idx import _compute_mask_indices
@@ -50,7 +51,7 @@ def _get_feature_vector_attention_mask(
     return attention_mask
 
 class Music2VecModel(nn.Module):
-    def __init__(self, out_features=768, num_layers=12):
+    def __init__(self, out_features=768, num_layers=12, sr=22050):
         super().__init__()
         # input: (22050*12.8) -> 1280
         # wavebeat의 channel 늘리는 것과 wav2vec2.0에서 channel 유지시키는 것을 mix했고 2019 tcn 모델의 dilated 부분을 참고했다
@@ -68,6 +69,8 @@ class Music2VecModel(nn.Module):
             (512, 2, 1),
             (512, 2, 1)
         ]
+
+        self.sr = sr
         
         # Expected values are False for Base (12 layers) and True for Large arch (24 layers).
         self.layer_norm_first = num_layers > 12
@@ -191,10 +194,11 @@ class Music2VecModel(nn.Module):
             (batch_size, sequence_length),
             mask_prob=mask_time_prob,
             mask_length=mask_time_length,
-            device=hidden_states.device,
-            attention_mask=attention_mask,
+            attention_mask=(1 - attention_mask),
             min_masks=2,
         )
+        print(hidden_states.shape, mask_time_indices.shape)
+        mask_time_indices = torch.tensor(mask_time_indices, device=hidden_states.device, dtype=torch.bool)
         hidden_states[mask_time_indices] = self.masked_spec_embed.to(hidden_states.dtype)
 
         return hidden_states,mask_time_indices
@@ -278,7 +282,7 @@ class Music2VecModel(nn.Module):
         logits = logits / temperature # 첫번째는 유사도가 높아야함
         return logits
 
-    def calculate_loss(self, waveforms: Tensor, lengths=None, attention_mask=False) -> Tensor:
+    def calculate_loss(self, waveforms: Tensor, attention_mask=None) -> Tensor:
         # to-do: add length
         # sample_to_tcn을 feature extractor length 생성 추가
         # calculate_loss에서 length 받아야함
@@ -289,15 +293,27 @@ class Music2VecModel(nn.Module):
         # sample_to_tcn, sample_to_transformer, mask_hidden_states는 반드시 length 정보가 들어가야함
         # 다 하면 학습돌릴 수 있음
 
+        lengths = None
+        if attention_mask is not None:
+            lengths = attention_mask.sum(-1)
+        print(lengths)
         extract_x, lengths = self.sample_to_tcn(waveforms, lengths)
         transformer_x = self.tcn_to_transformer(extract_x)
 
-        if attention_mask == True:
-            # compute reduced attention_mask corresponding to feature vectors
-            attention_mask = _get_feature_vector_attention_mask(
-                extract_x.shape[1], attention_mask, input_lengths=lengths
-            )
+        if attention_mask is not None:
+            lengths = lengths.squeeze()
+            print(lengths, lengths.shape)
 
+            batch_size, sequence_length, _ = extract_x.size()
+            attention_mask = torch.zeros((batch_size, sequence_length), dtype=torch.int32)
+
+            mask_criterion = torch.lt(lengths, sequence_length)
+            mask_criterion_sum = mask_criterion.sum()
+            if mask_criterion_sum != 0:
+                attention_mask[mask_criterion, lengths] = 1
+                attention_mask = torch.cumsum(attention_mask, dim=-1)
+
+        # to-do: test 10초
         hidden_states, mask_time_indices = self._mask_hidden_states(transformer_x, attention_mask=attention_mask)
         encoder_outputs = self.transformer(hidden_states, attention_mask)
 
@@ -353,6 +369,7 @@ class Music2VecModel(nn.Module):
         # 마지막 block에서 padding을 하나 줄임 (1283 -> 1280)
         if self.num_remove > 0:
             x = x[..., :-self.num_remove]
+            length = length - self.num_remove
 
         x = x.transpose(-2, -1)
 
@@ -412,6 +429,17 @@ class Music2VecModel(nn.Module):
         # Transformer
         # torch.Size([2, 1280, 768])
         print("Transformer", x.shape)
+
+        if attention_mask is not None:
+            # 00000111
+            # make sure padded tokens output 0
+            x[attention_mask.bool()] = 0.0
+
+            # extend attention_mask
+            attention_mask = (attention_mask[:, None, None, :].to(dtype=x.dtype)) * -10000.0
+            attention_mask = attention_mask.expand(
+                attention_mask.shape[0], 1, attention_mask.shape[-1], attention_mask.shape[-1]
+            )
         # length is not none 추가
         if not self.layer_norm_first:
             x = self.attention_layer_norm(x)

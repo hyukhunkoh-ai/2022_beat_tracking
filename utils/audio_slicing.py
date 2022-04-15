@@ -73,7 +73,7 @@ def slice_label(label_file_path, slice_start_times, audio_length, target_sr, sli
 def get_slices(audio_file_path, label_file_path, audio_length, target_sr):
     audio_slices = []
     annotations = []
-    times = []
+    attention_mask = None
 
     loaded_audio, loaded_audio_sr = torchaudio.load(audio_file_path)
     loaded_audio_length = loaded_audio.size(dim=1) / loaded_audio_sr
@@ -90,9 +90,8 @@ def get_slices(audio_file_path, label_file_path, audio_length, target_sr):
     if loaded_audio.size(dim=1) < target_audio_length:
         loaded_audio, attention_mask = pad(loaded_audio, audio_length, target_sr)
         audio_slices.append(loaded_audio)
-        times.append(loaded_audio_length)
     elif loaded_audio.size(dim=1) > target_audio_length:
-        attention_mask = None
+        attention_mask = torch.ones(size=(1, int(audio_length*target_sr)))
 
         audio_slices, slice_start_times, slice_overlap = slice_audio(
             loaded_audio,
@@ -102,7 +101,6 @@ def get_slices(audio_file_path, label_file_path, audio_length, target_sr):
         )
 
         slice_count = len(audio_slices)
-        times = [audio_length] * slice_count
 
         if label_file_path != None:
             annotations = slice_label(
@@ -113,4 +111,4 @@ def get_slices(audio_file_path, label_file_path, audio_length, target_sr):
                 slice_overlap
             )
 
-    return audio_slices, annotations, times
+    return audio_slices, annotations, attention_mask

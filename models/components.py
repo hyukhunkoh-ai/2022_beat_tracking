@@ -18,6 +18,8 @@ class ConvLayerBlock(nn.Module):
     ):
         super().__init__()
         self.kernel_size = kernel_size
+        self.dilation = dilation
+        self.padding = padding
         self.stride = stride
         self.layer_norm = layer_norm
         self.conv = nn.Conv1d(
@@ -49,7 +51,7 @@ class ConvLayerBlock(nn.Module):
         x = nn.functional.gelu(x)
 
         if length is not None:
-            length = torch.div(length - self.kernel_size, self.stride, rounding_mode='floor') + 1
+            length = ((length + 2*self.padding - self.dilation*(self.kernel_size - 1) - 1)/self.stride).long() + 1 #torch.div(length - 2*dilation*self.kernel_size, self.stride, rounding_mode='floor') + 1
             # When input length is 0, the resulting length can be negative. So fix it here.
             length = torch.max(torch.zeros_like(length), length)
         return x, length

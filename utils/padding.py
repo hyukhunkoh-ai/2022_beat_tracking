@@ -10,9 +10,11 @@ def pad(x, max_length, sr):
     """
 
     num_samples = x.shape[1]
+    target_samples = max_length*sr
     attention_mask = np.ones(num_samples, dtype=np.int32)
 
-    difference = max_length*sr - x
+    difference = int(target_samples - num_samples)
+
     attention_mask = np.pad(attention_mask, (0, difference))
     padding_shape = (0, difference)
     padded_x = np.pad(num_samples, padding_shape, "constant", constant_values=-1)
