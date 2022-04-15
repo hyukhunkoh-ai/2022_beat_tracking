@@ -307,6 +307,9 @@ class Music2VecModel(nn.Module):
             batch_size, sequence_length, _ = extract_x.size()
             attention_mask = torch.zeros((batch_size, sequence_length), dtype=torch.int32)
 
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            attention_mask.to(device)
+
             mask_criterion = torch.lt(lengths, sequence_length)
             mask_criterion_sum = mask_criterion.sum()
             if mask_criterion_sum != 0:
