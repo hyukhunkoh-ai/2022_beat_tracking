@@ -1,4 +1,5 @@
-import numpy as np
+import torch
+from torch import nn
 
 def pad(x, max_length, sr):
     """
@@ -11,12 +12,12 @@ def pad(x, max_length, sr):
 
     num_samples = x.shape[1]
     target_samples = max_length*sr
-    attention_mask = np.ones(num_samples, dtype=np.int32)
+    attention_mask = torch.ones(num_samples, dtype=torch.int32)
 
     difference = int(target_samples - num_samples)
-
-    attention_mask = np.pad(attention_mask, (0, difference))
     padding_shape = (0, difference)
-    padded_x = np.pad(num_samples, padding_shape, "constant", constant_values=-1)
+
+    attention_mask = nn.functional.pad(attention_mask, padding_shape)
+    padded_x = nn.functional.pad(x.squeeze(), padding_shape, "constant", value=-1).unsqueeze(0)
 
     return padded_x, attention_mask

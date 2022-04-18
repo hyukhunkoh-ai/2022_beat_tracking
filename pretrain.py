@@ -33,7 +33,7 @@ parser.add_argument('--lr', type=float, default=1e-3)
 
 args = parser.parse_args()
 
-dataset_types = ["60_excerpts_30"]#["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "fma_30", "openmic_10"]
+dataset_types = ["openmic_10"]#["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "fma_30", "openmic_10"]
 
 train_datasets = []
 num_files = 0
@@ -67,14 +67,11 @@ scheduler = torch.optim.lr_scheduler.OneCycleLR(
 for epoch in range(epochs):
     total_loss = []
 
-    # to-do: 2개(audio seq, length) 뽑아야함
     for data in train_dataloader:
         inputs, attention_masks = data
 
-        # device 반드시 넣어야함
         inputs = inputs.to(device)
         attention_masks = attention_masks.to(device)
-        print(inputs.shape, attention_masks.shape)
 
         model.to(device)
         optim.zero_grad()

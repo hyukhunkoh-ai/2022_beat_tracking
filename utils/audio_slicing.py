@@ -86,7 +86,6 @@ def get_slices(audio_file_path, label_file_path, audio_length, target_sr):
     # convert to mono
     if len(loaded_audio) == 2:
         loaded_audio = torch.mean(loaded_audio, dim=0).unsqueeze(0)
-
     if loaded_audio.size(dim=1) < target_audio_length:
         loaded_audio, attention_mask = pad(loaded_audio, audio_length, target_sr)
         audio_slices.append(loaded_audio)
@@ -99,8 +98,6 @@ def get_slices(audio_file_path, label_file_path, audio_length, target_sr):
             audio_length,
             target_sr
         )
-
-        slice_count = len(audio_slices)
 
         if label_file_path != None:
             annotations = slice_label(
