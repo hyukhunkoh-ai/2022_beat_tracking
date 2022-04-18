@@ -1,17 +1,24 @@
 from utils.audio_slicing import get_slices
 
-def process_pretrain_data(audio_file_paths, audio_length, sr):
+def process_pretrain_data(audio_file_paths, audio_length, sr, augment):
     audio_slices = []
     attention_masks = []
 
     for audio_file_path in audio_file_paths:
-        new_audio_slices, _, attention_mask = get_slices(audio_file_path, None, audio_length, sr)
+        new_audio_slices, _, attention_mask = get_slices(
+            audio_file_path,
+            None,
+            audio_length,
+            sr,
+            augment
+        )
+
         audio_slices += new_audio_slices
         attention_masks += [attention_mask]*len(new_audio_slices)
 
     return audio_slices, attention_masks
 
-def process_training_data(audio_file_paths, audio_length, sr):
+def process_training_data(audio_file_paths, audio_length, sr, augment):
     audio_slices = []
     annotations = []
 
@@ -36,7 +43,8 @@ def process_training_data(audio_file_paths, audio_length, sr):
                 audio_file_path,
                 label_file_path,
                 audio_length,
-                sr
+                sr,
+                augment
             )
 
             audio_slices += new_audio_slices

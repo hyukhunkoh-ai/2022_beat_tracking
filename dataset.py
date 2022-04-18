@@ -13,29 +13,24 @@ from utils.data_processing import process_pretrain_data, process_training_data
 # 그만큼 소셜 리듬댄스는 웬만한 음악이면 다 가능하다는 뜻도 된다. 그래서 편안한 파티용으로 많이 쓴다.
 
 class BeatDataset():
-    def __init__(self, path, audio_length=12.8, sr=22050):
+    def __init__(self, path, audio_length=12.8, sr=22050, augment=False):
         self.audio_slices = []
         self.annotations = []
 
         with open(os.path.join(path, 'new_data.txt'), 'r') as fp:
             audio_file_paths = [line.strip('\n') for line in fp.readlines()]
-            self.audio_slices, self.annotations = process_training_data(audio_file_paths, audio_length, sr)
+            self.audio_slices, self.annotations = process_training_data(audio_file_paths, audio_length, sr, augment)
 
     def __len__(self):
         return len(self.audio_slices)
 
     def __getitem__(self, idx):
         return self.audio_slices[idx], self.annotations[idx]
-        
-    # def random_crop(self,item):
-    #     crop_size = int(self.sequence_len * self.sr)
-    #     start = int(random.random() * (item.shape[0] - crop_size))
-    #     return item[start:(start+crop_size)]
 
 class SelfSupervisedDataset(Dataset):
-    def __init__(self, path, audio_length=12.8, sr=22050):
+    def __init__(self, path, audio_length=12.8, sr=22050, augment=False):
         audio_file_paths = list(glob(os.path.join(path, '*.wav'))) + list(glob(os.path.join(path, '*.mp3')))
-        self.audio_slices, self.attention_masks = process_pretrain_data(audio_file_paths, audio_length, sr)
+        self.audio_slices, self.attention_masks = process_pretrain_data(audio_file_paths, audio_length, sr, augment)
 
     def __len__(self):
         return len(self.audio_slices)
