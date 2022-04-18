@@ -455,7 +455,7 @@ class Music2VecModel(nn.Module):
         return x
 
     def forward(self, x, lengths=None):
-        x, length = self.sample_to_tcn(x, length)
+        x, length = self.sample_to_tcn(x, lengths)
         x = self.tcn_to_transformer(x)
         x = self.transformer_embedding(x)
         attention_mask = self.generate_mask(x, lengths)

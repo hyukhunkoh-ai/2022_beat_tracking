@@ -2,7 +2,7 @@ from sklearn.linear_model import MultiTaskElasticNet
 import torch
 from argparse import ArgumentParser
 from dataset import BeatDataset
-from models.supervised import MusicDetectionModel
+from models.self_supervised import Music2VecModel
 from models.loss import RegressionModel, ClassificationModel, FocalLoss
 
 parser = ArgumentParser()
@@ -44,12 +44,11 @@ train_dataloader = torch.utils.data.DataLoader(train_dataset_list,
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 dict_args = vars(args)
-model = MusicDetectionModel()
+model = Music2VecModel()
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
 regressionModel = RegressionModel(256)
 classificationModel = ClassificationModel(256)
-#anchorsModel = Anchors(audio_length=12.8, sr=22050, num_anchors=1280)
 focalLoss = FocalLoss()
 
 for epoch in range(args.epochs):
@@ -66,7 +65,6 @@ for epoch in range(args.epochs):
 
         regression = regressionModel(outputs)
         classification = classificationModel(outputs)
-        #anchors = anchorsModel(inputs)
         loss = focalLoss(classification, regression, annotations)
 
         optimizer.step()
