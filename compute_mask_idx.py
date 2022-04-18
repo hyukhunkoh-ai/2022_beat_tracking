@@ -77,7 +77,7 @@ def _compute_mask_indices(
 
         # get random indices to mask
         spec_aug_mask_idx = np.random.choice(
-            np.arange(input_length - (mask_length - 1)), num_masked_span, replace=False
+            np.arange(input_length.to("cpu") - (mask_length - 1)), num_masked_span, replace=False
         )
 
         # pick first sampled index that will serve as a dummy index to pad vector

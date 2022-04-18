@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 from typing import Optional
-from models.components import SelfAttention, FeedForward, EncoderLayer
+from models.components import SelfAttention, FeedForward, EncoderLayer, ConvLayerBlock
 
 class MusicDetectionModel(nn.Module):
     def __init__(self, detect_out=256, out_features=768, num_layers=12):
@@ -60,7 +60,7 @@ class MusicDetectionModel(nn.Module):
             )
 
             blocks.append(
-                nn.Conv1d(
+                ConvLayerBlock(
                     in_channels=in_channels,
                     out_channels=out_channels,
                     kernel_size=kernel_size,
@@ -68,6 +68,7 @@ class MusicDetectionModel(nn.Module):
                     dilation=dilation,
                     padding=pad_value,
                     bias=False,
+                    layer_norm=normalization
                 )
             )
             in_channels = out_channels
@@ -141,7 +142,7 @@ class MusicDetectionModel(nn.Module):
 
         # 마지막 block에서 padding을 하나 줄임 (1283 -> 1280)
         for block in self.blocks:
-            x = block(x)
+            x = block(x, lengths)
 
         # batch size, channel, sequence length
         # 마지막 block에서 padding을 하나 줄임 (1283 -> 1280)

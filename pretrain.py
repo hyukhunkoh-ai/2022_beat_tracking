@@ -10,7 +10,7 @@ from models.self_supervised import Music2VecModel
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # epochs = 100000
 epochs = 1
-bs = 5 # 5 * 4 = 20
+bs = 4 # 5 * 4 = 20
 
 # to-do:
 # dataloader
@@ -34,8 +34,8 @@ parser.add_argument('--lr', type=float, default=1e-3)
 args = parser.parse_args()
 
 dataset_types = ["60_excerpts_30"]#["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "fma_30", "openmic_10"]
-train_datasets = []
 
+train_datasets = []
 num_files = 0
 
 for dataset_type in dataset_types:
@@ -50,7 +50,7 @@ steps_per_epoch = num_files // bs + 1
 train_dataset_list = torch.utils.data.ConcatDataset(train_datasets)
 train_dataloader = torch.utils.data.DataLoader(train_dataset_list,
                                             shuffle=True,
-                                            batch_size=4,
+                                            batch_size=bs,
                                             num_workers=0,
                                             pin_memory=True)
 

@@ -228,6 +228,7 @@ class Music2VecModel(nn.Module):
     def _sample_negatives(
         features: torch.FloatTensor, num_negatives: int, attention_mask: Optional[torch.LongTensor] = None
     ):
+        attention_mask = 1 - attention_mask
         batch_size, sequence_length, hidden_size = features.shape
         if sequence_length <= 1:
             raise ValueError(
