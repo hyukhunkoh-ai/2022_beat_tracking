@@ -58,6 +58,7 @@ for epoch in range(args.epochs):
         inputs = inputs.to(device)
         annotations = annotations.to(device)
 
+        model.to(device)
         optimizer.zero_grad()
         #outputs = torch.randn(16, 1280, 256).cuda()
         outputs = model(inputs)

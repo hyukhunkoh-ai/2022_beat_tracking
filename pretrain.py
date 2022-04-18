@@ -2,7 +2,6 @@ import torch
 import os
 import soundfile as sf
 import numpy as np
-from transformers import Wav2Vec2FeatureExtractor
 from dataset import SelfSupervisedDataset
 from argparse import ArgumentParser
 from models.self_supervised import Music2VecModel
@@ -33,7 +32,7 @@ parser.add_argument('--lr', type=float, default=1e-3)
 
 args = parser.parse_args()
 
-dataset_types = ["openmic_10"]#["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "fma_30", "openmic_10"]
+dataset_types = ["60_excerpts_30"]#["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "fma_30", "openmic_10"]
 
 train_datasets = []
 num_files = 0

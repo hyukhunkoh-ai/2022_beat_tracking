@@ -299,13 +299,12 @@ class Music2VecModel(nn.Module):
         lengths = None
         if attention_mask is not None:
             lengths = attention_mask.sum(-1)
-        print(lengths)
+
         extract_x, lengths = self.sample_to_tcn(waveforms, lengths)
         transformer_x = self.tcn_to_transformer(extract_x)
 
         if attention_mask is not None:
             lengths = lengths.squeeze()
-            print(lengths, lengths.shape)
 
             batch_size, sequence_length, _ = extract_x.size()
             attention_mask = torch.zeros((batch_size, sequence_length), dtype=torch.int32, device=device)
