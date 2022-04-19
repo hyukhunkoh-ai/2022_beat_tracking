@@ -1,4 +1,4 @@
-from utils.audio_slicing import get_slices
+from utils.slicing import get_slices
 
 def process_pretrain_data(audio_file_paths, audio_length, sr, augment):
     audio_slices = []
