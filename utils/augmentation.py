@@ -3,24 +3,15 @@ import torch
 import scipy.signal
 import soxbindings as sox
 
-def apply_augmentations(audio, target, audio_length, sr):
-
-    # random gain from 0dB to -6 dB
-    #if np.random.rand() < 0.2:      
-    #    #sgn = np.random.choice([-1,1])
-    #    audio = audio * (10**((-1 * np.random.rand() * 6)/20))   
-
-    # phase inversion
-    if np.random.rand() < 0.5:      
-        audio = -audio                              
-
+def apply_pre_augmentations(audio, target, audio_length, sr):
     # drop continguous frames
     if np.random.rand() < 0.05:     
         zero_size = int(audio_length*0.1)
         start = np.random.randint(audio.shape[-1] - zero_size - 1)
         stop = start + zero_size
         audio[:,start:stop] = 0
-        target[:,start:stop] = 0
+        if target is not None:
+            target[:,start:stop] = 0
 
     # apply time stretching
     if np.random.rand() < 0.0:
@@ -38,34 +29,42 @@ def apply_augmentations(audio, target, audio_length, sr):
                                 sample_rate_in=sr)
         audio = torch.from_numpy(audio.astype('float32')).view(1,-1)
 
-        # now we update the targets based on new tempo
-        dbeat_ind = (target[1,:] == 1).nonzero(as_tuple=False)
-        dbeat_sec = dbeat_ind / sr
-        new_dbeat_sec = (dbeat_sec / factor).squeeze()
-        new_dbeat_ind = (new_dbeat_sec * sr).long()
+        if target is not None:
+            # now we update the targets based on new tempo
+            dbeat_ind = (target[1,:] == 1).nonzero(as_tuple=False)
+            dbeat_sec = dbeat_ind / sr
+            new_dbeat_sec = (dbeat_sec / factor).squeeze()
+            new_dbeat_ind = (new_dbeat_sec * sr).long()
 
-        beat_ind = (target[0,:] == 1).nonzero(as_tuple=False)
-        beat_sec = beat_ind / sr
-        new_beat_sec = (beat_sec / factor).squeeze()
-        new_beat_ind = (new_beat_sec * sr).long()
+            beat_ind = (target[0,:] == 1).nonzero(as_tuple=False)
+            beat_sec = beat_ind / sr
+            new_beat_sec = (beat_sec / factor).squeeze()
+            new_beat_ind = (new_beat_sec * sr).long()
 
-        # now convert indices back to target vector
-        new_size = int(np.ceil(target.shape[-1] / factor))
-        streteched_target = torch.zeros(2,new_size)
-        streteched_target[0,new_beat_ind] = 1
-        streteched_target[1,new_dbeat_ind] = 1
-        target = streteched_target
+            # now convert indices back to target vector
+            new_size = int(np.ceil(target.shape[-1] / factor))
+            streteched_target = torch.zeros(2,new_size)
+            streteched_target[0,new_beat_ind] = 1
+            streteched_target[1,new_dbeat_ind] = 1
+            target = streteched_target
 
-    if np.random.rand() < 0.0:
-        # this is the old method (shift all beats)
-        max_shift = int(0.070 * sr)
-        shift = np.random.randint(0, high=max_shift)
-        direction = np.random.choice([-1,1])
-        target = torch.roll(target, shift * direction)
+    # apply a chorus effect
+    if np.random.rand() < 0.05:
+        tfm = sox.Transformer()        
+        tfm.chorus()
+        audio = tfm.build_array(input_array=audio.squeeze().numpy(), 
+                                sample_rate_in=sr)
+        audio = torch.from_numpy(audio.astype('float32')).view(1,-1)
+
+    return audio, target
+
+def apply_post_augmentations(audio, target, sr):
+    # phase inversion
+    if np.random.rand() < 0.5:      
+        audio = -audio
 
     # shift targets forward/back max 70ms
-    if np.random.rand() < 0.3:      
-        
+    if np.random.rand() < 0.3 and target is not None:
         # in this method we shift each beat and downbeat by a random amount
         max_shift = int(0.045 * sr)
 
@@ -96,11 +95,25 @@ def apply_augmentations(audio, target, audio_length, sr):
     if np.random.rand() < 0.5:
         sgn = np.random.choice([-1,1])
         factor = sgn * np.random.rand() * 8.0     
-        tfm = sox.Transformer()        
+        tfm = sox.Transformer()
         tfm.pitch(factor)
+
+        desired_audio_length = audio.size(dim=1)
+
         audio = tfm.build_array(input_array=audio.squeeze().numpy(), 
-                                sample_rate_in=self.audio_sample_rate)
+                                sample_rate_in=sr)
+
+        audio = np.resize(audio, (1, desired_audio_length))
         audio = torch.from_numpy(audio.astype('float32')).view(1,-1)
+
+        audio_length = audio.size(dim=1)
+
+        # build_array의 결과가 원래의 audio보다 짧으면 np.resize로 길어지므로 추가된 값을 0으로 초기화해야함
+        if desired_audio_length > audio_length:
+            difference = desired_audio_length - audio_length
+            audio[:, difference:] = 0
+        elif desired_audio_length < audio_length:
+            print(desired_audio_length, audio_length)
 
     # apply a lowpass filter
     if np.random.rand() < 0.1:
@@ -108,7 +121,7 @@ def apply_augmentations(audio, target, audio_length, sr):
         sos = scipy.signal.butter(2, 
                                   cutoff, 
                                   btype="lowpass", 
-                                  fs=self.audio_sample_rate, 
+                                  fs=sr, 
                                   output='sos')
         audio_filtered = scipy.signal.sosfilt(sos, audio.numpy())
         audio = torch.from_numpy(audio_filtered.astype('float32'))
@@ -119,18 +132,10 @@ def apply_augmentations(audio, target, audio_length, sr):
         sos = scipy.signal.butter(2, 
                                   cutoff, 
                                   btype="highpass", 
-                                  fs=self.audio_sample_rate, 
+                                  fs=sr, 
                                   output='sos')
         audio_filtered = scipy.signal.sosfilt(sos, audio.numpy())
         audio = torch.from_numpy(audio_filtered.astype('float32'))
-
-    # apply a chorus effect
-    if np.random.rand() < 0.05:
-        tfm = sox.Transformer()        
-        tfm.chorus()
-        audio = tfm.build_array(input_array=audio.squeeze().numpy(), 
-                                sample_rate_in=self.audio_sample_rate)
-        audio = torch.from_numpy(audio.astype('float32')).view(1,-1)
 
     # apply a compressor effect
     if np.random.rand() < 0.15:
@@ -139,7 +144,7 @@ def apply_augmentations(audio, target, audio_length, sr):
         tfm = sox.Transformer()        
         tfm.compand(attack_time=attack, decay_time=release)
         audio = tfm.build_array(input_array=audio.squeeze().numpy(), 
-                                sample_rate_in=self.audio_sample_rate)
+                                sample_rate_in=sr)
         audio = torch.from_numpy(audio.astype('float32')).view(1,-1)
 
     # apply an EQ effect
@@ -150,7 +155,7 @@ def apply_augmentations(audio, target, audio_length, sr):
         tfm = sox.Transformer()        
         tfm.equalizer(frequency=freq, width_q=q, gain_db=g)
         audio = tfm.build_array(input_array=audio.squeeze().numpy(), 
-                                sample_rate_in=self.audio_sample_rate)
+                                sample_rate_in=sr)
         audio = torch.from_numpy(audio.astype('float32')).view(1,-1)
 
     # add white noise
@@ -163,7 +168,7 @@ def apply_augmentations(audio, target, audio_length, sr):
     if np.random.rand() < 0.2:   
         g = 10**((np.random.rand() * 12)/20)   
         audio = torch.tanh(audio)    
-    
+
     # normalize the audio
     audio /= audio.float().abs().max()
 

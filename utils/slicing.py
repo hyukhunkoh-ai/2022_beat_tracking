@@ -1,7 +1,7 @@
 import torch
 import math
 from utils.data_loading import load_audio, load_annotation
-from utils.augmentation import apply_augmentations
+from utils.augmentation import apply_pre_augmentations, apply_post_augmentations
 from utils.padding import pad
 
 def slice_audio(loaded_audio, loaded_audio_length, audio_length, target_sr):
@@ -62,35 +62,73 @@ def slice_annotation(annotation, slice_start_times, audio_length, target_sr, sli
 
     return total_annotations
 
-def get_slices(audio_file_path, label_file_path, audio_length, target_sr, augment):
+def get_slices(audio_file_path, label_file_path, audio_length, sr, augment):
     audio_slices = []
     annotation_slices = []
     attention_mask = None
 
-    loaded_audio, loaded_audio_sr = load_audio(audio_file_path, target_sr)
-    loaded_annotation = load_annotation(label_file_path)
+    loaded_audio, loaded_audio_length = load_audio(audio_file_path, sr)
+    loaded_annotation = None
 
+    if label_file_path is not None:
+        loaded_annotation = load_annotation(label_file_path)
+
+    if augment:
+        loaded_audio, loaded_annotation = apply_pre_augmentations(
+            loaded_audio,
+            loaded_annotation,
+            audio_length,
+            sr
+        )
+
+    target_audio_length = int(audio_length*sr)
     if loaded_audio.size(dim=1) < target_audio_length:
-        loaded_audio, attention_mask = pad(loaded_audio, audio_length, target_sr)
+        loaded_audio, attention_mask = pad(loaded_audio, audio_length, sr)
+
+        if augment:
+            loaded_audio, loaded_annotation = apply_post_augmentations(
+                loaded_audio,
+                loaded_annotation,
+                sr
+            )
+
         audio_slices.append(loaded_audio)
         annotation_slices.append(loaded_annotation)
     elif loaded_audio.size(dim=1) > target_audio_length:
-        attention_mask = torch.ones(size=(1, int(audio_length*target_sr)))
+        attention_mask = torch.ones(size=(1, int(audio_length*sr)))
 
         audio_slices, slice_start_times, slice_overlap = slice_audio(
             loaded_audio,
             loaded_audio_length,
             audio_length,
-            target_sr
+            sr
         )
 
-        if label_file_path != None:
+        if label_file_path is not None:
             annotation_slices = slice_annotation(
                 loaded_annotation,
                 slice_start_times,
                 audio_length,
-                target_sr,
+                sr,
                 slice_overlap
             )
+
+        # loaded_annotation이 None일 경우 두번째 반환값은 None이 됨
+        if augment:
+            for slice_index, audio_slice in enumerate(audio_slices):
+                annotation_slice = None
+                if label_file_path is not None:
+                    annotation_slice = annotation_slices[slice_index]
+
+                augmented_audio, augmented_annotation = apply_post_augmentations(
+                    audio_slice,
+                    annotation_slice,
+                    sr
+                )
+
+                audio_slices[slice_index] = augmented_audio
+
+                if label_file_path is not None:
+                    annotation_slices[slice_index] = augmented_annotation
 
     return audio_slices, annotation_slices, attention_mask
