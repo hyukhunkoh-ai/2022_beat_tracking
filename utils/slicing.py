@@ -93,4 +93,15 @@ def get_slices(audio_file_path, label_file_path, audio_length, target_sr, augmen
                 slice_overlap
             )
 
+    if label_file_path != None:
+        assert len(audio_slices) == len(annotation_slices), "audio and annotation slice counts not equal"
+
+    for index, _ in enumerate(audio_slices):
+        audio_slices[index], annotation_slices[index] = apply_augmentations(
+            audio_slices[index],
+            annotation_slices[index],
+            audio_length,
+            target_sr
+        )
+
     return audio_slices, annotation_slices, attention_mask
