@@ -28,7 +28,7 @@ class BeatDataset():
         return self.audio_slices[idx], self.annotations[idx]
 
 class SelfSupervisedDataset(Dataset):
-    def __init__(self, path, audio_length=12.8, sr=22050, augment=False):
+    def __init__(self, path, audio_length=12.8, sr=22050, augment=True):
         audio_file_paths = list(glob(os.path.join(path, '*.wav'))) + list(glob(os.path.join(path, '*.mp3')))
         self.audio_slices, self.attention_masks = process_pretrain_data(audio_file_paths, audio_length, sr, augment)
 

@@ -199,7 +199,7 @@ class Music2VecModel(nn.Module):
             attention_mask=(1 - attention_mask),
             min_masks=2,
         )
-        print(hidden_states.shape, mask_time_indices.shape)
+        #print(hidden_states.shape, mask_time_indices.shape)
         mask_time_indices = torch.tensor(mask_time_indices, device=hidden_states.device, dtype=torch.bool)
         hidden_states[mask_time_indices] = self.masked_spec_embed.to(hidden_states.dtype)
 
@@ -350,7 +350,7 @@ class Music2VecModel(nn.Module):
         diversity_loss_weight = 0.1
         num_codevectors = num_codevectors_per_group * num_codevector_groups
         diversity_loss = (num_codevectors - codevector_perplexity) / num_codevectors
-        print(contrastive_loss, diversity_loss_weight * diversity_loss)
+        #print(contrastive_loss, diversity_loss_weight * diversity_loss)
         loss = contrastive_loss + diversity_loss_weight * diversity_loss
 
         return loss
@@ -361,7 +361,7 @@ class Music2VecModel(nn.Module):
         #########################
         # Pre-TCN
         # torch.Size([2, 1, 282240]) (batch, feature, audio sample)
-        print("Pre-TCN", x.shape)
+        #print("Pre-TCN", x.shape)
 
         # 마지막 block에서 padding을 하나 줄임 (1283 -> 1280)
         for block in self.blocks:
@@ -384,7 +384,7 @@ class Music2VecModel(nn.Module):
         #########################
         # Projection (TCN -> Transformer)
         # torch.Size([2, 1280, 512]) (batch size, sequence length, channel)
-        print("Projection (TCN -> Transformer)", x.shape)
+        #print("Projection (TCN -> Transformer)", x.shape)
 
         x = self.projection_layer_norm(x)
         x = self.projection(x)
@@ -396,7 +396,7 @@ class Music2VecModel(nn.Module):
         #########################
         # Transformer embedding
         # torch.Size([2, 1280, 768])
-        print("Transformer embedding", x.shape)
+        #print("Transformer embedding", x.shape)
 
         embedded_x = x.transpose(-2, -1)
         embedded_x = self.conv(embedded_x)
@@ -412,7 +412,7 @@ class Music2VecModel(nn.Module):
     def generate_mask(self, x, lengths):
         #########################
         # Mask generation
-        print("Mask generation", x.shape)
+        #print("Mask generation", x.shape)
 
         attention_mask: Optional[Tensor] = None
         if lengths is not None:
@@ -430,7 +430,7 @@ class Music2VecModel(nn.Module):
         #########################
         # Transformer
         # torch.Size([2, 1280, 768])
-        print("Transformer", x.shape)
+        #print("Transformer", x.shape)
 
         if attention_mask is not None:
             # 00000111
@@ -463,6 +463,6 @@ class Music2VecModel(nn.Module):
         #########################
         # Result
         # torch.Size([2, 1280, 768])
-        print("Result", x.shape)
+        #print("Result", x.shape)
 
         return x
