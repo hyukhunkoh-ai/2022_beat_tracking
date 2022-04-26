@@ -7,8 +7,7 @@ from argparse import ArgumentParser
 from models.self_supervised import Music2VecModel
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-# epochs = 100000
-epochs = 1
+epochs = 100000
 bs = 4 # 5 * 4 = 20
 
 # to-do:
@@ -26,18 +25,19 @@ bs = 4 # 5 * 4 = 20
 #train
 
 parser = ArgumentParser()
-parser.add_argument('--unlabel_dir', type=str, default='./datapath/unlabel')
+parser.add_argument('--unlabel_dir', type=str, default='/beat_tracking/unlabel')
 parser.add_argument('--epochs', type=int, default=100)
 parser.add_argument('--lr', type=float, default=1e-3)
 
 args = parser.parse_args()
 
-dataset_types = ["60_excerpts_30"]#["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "fma_30", "openmic_10"]
+dataset_types = ["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "fma_30", "openmic_10"]
 
 train_datasets = []
 num_files = 0
 
 for dataset_type in dataset_types:
+    print("Now loading:", dataset_type)
     audio_dir = os.path.join(args.unlabel_dir, dataset_type)
     dataset = SelfSupervisedDataset(audio_dir)
 
@@ -81,4 +81,4 @@ for epoch in range(epochs):
         scheduler.step()
     print(np.mean(total_loss))
 
-
+torch.save(model, 'model.pt')

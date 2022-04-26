@@ -4,17 +4,21 @@ def process_pretrain_data(audio_file_paths, audio_length, sr, augment):
     audio_slices = []
     attention_masks = []
 
-    for audio_file_path in audio_file_paths:
-        new_audio_slices, _, attention_mask = get_slices(
-            audio_file_path,
-            None,
-            audio_length,
-            sr,
-            augment
-        )
+    for index, audio_file_path in enumerate(audio_file_paths):
+        print(str(index) + "/" + str(len(audio_file_paths)), audio_file_path)
+        try:
+            new_audio_slices, _, attention_mask = get_slices(
+                audio_file_path,
+                None,
+                audio_length,
+                sr,
+                augment
+            )
 
-        audio_slices += new_audio_slices
-        attention_masks += [attention_mask]*len(new_audio_slices)
+            audio_slices += new_audio_slices
+            attention_masks += [attention_mask]*len(new_audio_slices)
+        except RuntimeError:
+            pass
 
     return audio_slices, attention_masks
 
