@@ -4,9 +4,11 @@ import librosa
 import random
 import numpy as np
 from glob import glob
+from audioread.exceptions import NoBackendError
 from torch.utils.data import Dataset
 from torchaudio_augmentations import *
 from utils.data_processing import process_pretrain_data, process_training_data
+from utils.slicing import get_slice_count, get_slices
 # 룸바는 26/27이 표준이다. 차차차는 28/30, 자이브 42/44, 삼바는 50/52, 파소도블레는 60/62 BPM이다. 숫자가 높을수록 빠르다.
 #
 # 왈츠는 30 BPM, 퀵스텝 50, 폭스트로트 30, 탱고 33/34이 표준으로 되어 있다. 소셜 리듬댄스는 26/50으로 폭이 넓다.
@@ -29,14 +31,64 @@ class BeatDataset():
 
 class SelfSupervisedDataset(Dataset):
     def __init__(self, path, audio_length=12.8, sr=22050, augment=True):
+        self.audio_length = audio_length
+        self.sr = sr
+        self.augment = augment
+
         audio_file_paths = list(glob(os.path.join(path, '*.wav'))) + list(glob(os.path.join(path, '*.mp3')))
-        self.audio_slices, self.attention_masks = process_pretrain_data(audio_file_paths, audio_length, sr, augment)
+
+        self.audio_slices = []
+        for audio_file_path in audio_file_paths:
+            try:
+                audio_duration = librosa.get_duration(filename=audio_file_path)
+                slice_count, slice_overlap = get_slice_count(audio_duration, audio_length)
+
+                for slice_index in range(slice_count):
+                    slice_start = int((audio_length - slice_overlap)*slice_index)
+                    slice_end = slice_start + audio_length
+
+                    self.audio_slices.append({
+                        "path": audio_file_path,
+                        "start": slice_start,
+                    })
+            except (RuntimeError, NoBackendError):
+                pass
 
     def __len__(self):
         return len(self.audio_slices)
 
-    def __getitem__(self, idx):
-        return self.audio_slices[idx], self.attention_masks[idx]
+    def __getitem__(self, index):
+        audio_slice = self.audio_slices[index]
+        if "data" in audio_slice and "mask" in audio_slice:
+            # data와 mask가 이미 준비되어 있음
+            return audio_slice["data"], audio_slice["mask"]
+
+        first_audio_slice_index = index
+        while first_audio_slice_index > 0 and self.audio_slices[first_audio_slice_index - 1]["path"] == audio_slice["path"]:
+            first_audio_slice_index -= 1
+
+        first_audio_slice = self.audio_slices[first_audio_slice_index]
+        index_offset_from_first_slice = index - first_audio_slice_index
+
+        audio_file_path = audio_slice["path"]
+
+        try:
+            new_audio_slices, _, attention_mask = get_slices(
+                audio_file_path,
+                None,
+                self.audio_length,
+                self.sr,
+                self.augment
+            )
+
+            for slice_index_offset, new_audio_slice in enumerate(new_audio_slices):
+                slice_index = first_audio_slice_index + slice_index_offset
+                self.audio_slices[slice_index]["data"] = new_audio_slice#.cpu().detach().numpy()
+                self.audio_slices[slice_index]["mask"] = attention_mask#.cpu().detach().numpy()
+
+            return self.audio_slices[index]["data"], self.audio_slices[index]["mask"]
+        except RuntimeError:
+            pass
 
 transforms_polarity = 0.8
 transforms_noise = 0.01

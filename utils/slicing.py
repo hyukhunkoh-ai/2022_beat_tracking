@@ -4,12 +4,17 @@ from utils.data_loading import load_audio, load_annotation
 from utils.augmentation import apply_pre_augmentations, apply_post_augmentations
 from utils.padding import pad
 
+def get_slice_count(audio_length, desired_audio_length):
+    slice_count = math.ceil(audio_length / desired_audio_length)
+    slice_remainder = audio_length % desired_audio_length
+    slice_overlap = (desired_audio_length - slice_remainder)/(slice_count - 1)
+
+    return slice_count, slice_overlap
+
 def slice_audio(loaded_audio, loaded_audio_length, audio_length, target_sr):
     audio_slices = []
 
-    slice_count = math.ceil(loaded_audio_length / audio_length)
-    slice_remainder = loaded_audio_length % audio_length
-    slice_overlap = (audio_length - slice_remainder)/(slice_count - 1)
+    slice_count, slice_overlap = get_slice_count(loaded_audio_length, audio_length)
 
     slice_start_times = []
 
