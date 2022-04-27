@@ -7,7 +7,7 @@ from utils.padding import pad
 def get_slice_count(audio_length, desired_audio_length):
     slice_count = math.ceil(audio_length / desired_audio_length)
     slice_remainder = audio_length % desired_audio_length
-    slice_overlap = (desired_audio_length - slice_remainder)/(slice_count - 1)
+    slice_overlap = (desired_audio_length - slice_remainder)/(slice_count - 1) if slice_count > 1 else 1
 
     return slice_count, slice_overlap
 

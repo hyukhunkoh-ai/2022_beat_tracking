@@ -38,15 +38,14 @@ class SelfSupervisedDataset(Dataset):
         audio_file_paths = list(glob(os.path.join(path, '*.wav'))) + list(glob(os.path.join(path, '*.mp3')))
 
         self.audio_slices = []
-        for audio_file_path in audio_file_paths:
+        for index, audio_file_path in enumerate(audio_file_paths):
+            print(index, len(audio_file_paths), audio_file_path)
             try:
                 audio_duration = librosa.get_duration(filename=audio_file_path)
                 slice_count, slice_overlap = get_slice_count(audio_duration, audio_length)
 
                 for slice_index in range(slice_count):
                     slice_start = int((audio_length - slice_overlap)*slice_index)
-                    slice_end = slice_start + audio_length
-
                     self.audio_slices.append({
                         "path": audio_file_path,
                         "start": slice_start,
