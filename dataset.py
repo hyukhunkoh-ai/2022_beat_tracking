@@ -3,6 +3,7 @@ import os
 import librosa
 import random
 import numpy as np
+import json
 from glob import glob
 from audioread.exceptions import NoBackendError
 from torch.utils.data import Dataset
@@ -36,12 +37,27 @@ class SelfSupervisedDataset(Dataset):
         self.augment = augment
 
         audio_file_paths = list(glob(os.path.join(path, '*.wav'))) + list(glob(os.path.join(path, '*.mp3')))
+        audio_lengths_json_file_name = 'audio_lengths.json'
+        try:
+            json_file = open(audio_lengths_json_file_name)
+            audio_lengths = json.load(json_file)
+        except FileNotFoundError:
+            audio_lengths = {}
 
         self.audio_slices = []
         for index, audio_file_path in enumerate(audio_file_paths):
             print(index, len(audio_file_paths), audio_file_path)
-            try:
-                audio_duration = librosa.get_duration(filename=audio_file_path)
+
+            audio_duration = None
+            if audio_file_path in audio_lengths:
+                audio_duration = audio_lengths[audio_file_path]
+            else:
+                try:
+                    audio_duration = librosa.get_duration(filename=audio_file_path)
+                except (RuntimeError, NoBackendError):
+                    pass
+
+            if audio_duration is not None:
                 slice_count, slice_overlap = get_slice_count(audio_duration, audio_length)
 
                 for slice_index in range(slice_count):
@@ -50,8 +66,12 @@ class SelfSupervisedDataset(Dataset):
                         "path": audio_file_path,
                         "start": slice_start,
                     })
-            except (RuntimeError, NoBackendError):
-                pass
+
+                if not audio_file_path in audio_lengths:
+                    audio_lengths[audio_file_path] = audio_duration
+
+                    with open(audio_lengths_json_file_name, 'w') as json_file:
+                        json.dump(audio_lengths, json_file)
 
     def __len__(self):
         return len(self.audio_slices)
