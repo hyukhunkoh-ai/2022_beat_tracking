@@ -70,7 +70,7 @@ def slice_annotation(annotation, slice_start_times, audio_length, target_sr, sli
 def get_slices(audio_file_path, label_file_path, audio_length, sr, augment):
     audio_slices = []
     annotation_slices = []
-    attention_mask = None
+    attention_masks = None
 
     loaded_audio, loaded_audio_length = load_audio(audio_file_path, sr)
     loaded_annotation = None
@@ -99,15 +99,16 @@ def get_slices(audio_file_path, label_file_path, audio_length, sr, augment):
 
         audio_slices.append(loaded_audio)
         annotation_slices.append(loaded_annotation)
+        attention_masks = torch.ones(size=(1, int(audio_length*sr)))
     elif loaded_audio.size(dim=1) > target_audio_length:
-        attention_mask = torch.ones(size=(1, int(audio_length*sr)))
-
         audio_slices, slice_start_times, slice_overlap = slice_audio(
             loaded_audio,
             loaded_audio_length,
             audio_length,
             sr
         )
+
+        attention_masks = torch.ones(size=(len(audio_slices), int(audio_length*sr)))
 
         if label_file_path is not None:
             annotation_slices = slice_annotation(
@@ -136,4 +137,4 @@ def get_slices(audio_file_path, label_file_path, audio_length, sr, augment):
                 if label_file_path is not None:
                     annotation_slices[slice_index] = augmented_annotation
 
-    return audio_slices, annotation_slices, attention_mask
+    return audio_slices, annotation_slices, attention_masks

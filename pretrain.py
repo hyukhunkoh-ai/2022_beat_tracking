@@ -8,7 +8,7 @@ from models.self_supervised import Music2VecModel
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 epochs = 100000
-bs = 4 # 5 * 4 = 20
+bs = 2 # 5 * 4 = 20
 
 # to-do:
 # dataloader
@@ -25,13 +25,15 @@ bs = 4 # 5 * 4 = 20
 #train
 
 parser = ArgumentParser()
-parser.add_argument('--unlabel_dir', type=str, default='./datapath/unlabel')
+parser.add_argument('--unlabel_dir', type=str, default='/beat_tracking/unlabel')
 parser.add_argument('--epochs', type=int, default=100)
 parser.add_argument('--lr', type=float, default=1e-3)
 
 args = parser.parse_args()
 
-dataset_types = ["60_excerpts_30", "openmic_10"]#["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "fma_30", "openmic_10"]
+# memoization을 하게끔 만들었음에도 fma_30가 엄청 크기 때문에 데이터로딩이 오래걸리므로. 테스트 시 fma_30 dataset을 생략하는 것이 유리함
+dataset_types = ["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "fma_30", "openmic_10"]
+#dataset_types = ["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "openmic_10"]
 
 train_datasets = []
 num_files = 0
@@ -62,6 +64,8 @@ scheduler = torch.optim.lr_scheduler.OneCycleLR(
     epochs=epochs,
     pct_start=0.08
 )
+
+print(len(train_dataloader))
 
 for epoch in range(epochs):
     total_loss = []

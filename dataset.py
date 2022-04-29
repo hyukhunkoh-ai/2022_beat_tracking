@@ -46,7 +46,7 @@ class SelfSupervisedDataset(Dataset):
 
         self.audio_slices = []
         for index, audio_file_path in enumerate(audio_file_paths):
-            print(index, len(audio_file_paths), audio_file_path)
+            #print(index, len(audio_file_paths), audio_file_path)
 
             audio_duration = None
             if audio_file_path in audio_lengths:
@@ -80,6 +80,7 @@ class SelfSupervisedDataset(Dataset):
         audio_slice = self.audio_slices[index]
         if "data" in audio_slice and "mask" in audio_slice:
             # data와 mask가 이미 준비되어 있음
+            #print(1,audio_slice["data"], audio_slice["mask"])
             return audio_slice["data"], audio_slice["mask"]
 
         first_audio_slice_index = index
@@ -92,7 +93,7 @@ class SelfSupervisedDataset(Dataset):
         audio_file_path = audio_slice["path"]
 
         try:
-            new_audio_slices, _, attention_mask = get_slices(
+            new_audio_slices, _, attention_masks = get_slices(
                 audio_file_path,
                 None,
                 self.audio_length,
@@ -101,10 +102,12 @@ class SelfSupervisedDataset(Dataset):
             )
 
             for slice_index_offset, new_audio_slice in enumerate(new_audio_slices):
+                attention_mask = attention_masks[slice_index_offset]
                 slice_index = first_audio_slice_index + slice_index_offset
                 self.audio_slices[slice_index]["data"] = new_audio_slice#.cpu().detach().numpy()
                 self.audio_slices[slice_index]["mask"] = attention_mask#.cpu().detach().numpy()
 
+            #print(2, self.audio_slices[index]["data"].shape, self.audio_slices[index]["mask"].shape)
             return self.audio_slices[index]["data"], self.audio_slices[index]["mask"]
         except RuntimeError:
             pass
