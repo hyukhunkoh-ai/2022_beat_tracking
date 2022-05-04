@@ -1,0 +1,8 @@
+/beat_tracking/unlabel/fma_30/020607.mp3 tensor([[nan, nan, nan,  ..., nan, nan, nan]])
+/beat_tracking/unlabel/fma_30/119102.mp3 tensor([[nan, nan, nan,  ..., nan, nan, nan]])
+/beat_tracking/unlabel/fma_30/007439.mp3 tensor([[nan, nan, nan,  ..., nan, nan, nan]])
+/beat_tracking/unlabel/fma_30/020616.mp3 tensor([[nan, nan, nan,  ..., nan, nan, nan]])
+/beat_tracking/unlabel/fma_30/042873.mp3 tensor([[nan, nan, nan,  ..., nan, nan, nan]])
+/beat_tracking/unlabel/fma_30/085523.mp3 tensor([[nan, nan, nan,  ..., nan, nan, nan]])
+/beat_tracking/unlabel/fma_30/097080.mp3 tensor([[nan, nan, nan,  ..., nan, nan, nan]])
+/beat_tracking/unlabel/fma_30/110736.mp3

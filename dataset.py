@@ -9,7 +9,7 @@ from audioread.exceptions import NoBackendError
 from torch.utils.data import Dataset
 from torchaudio_augmentations import *
 from utils.data_processing import process_pretrain_data, process_training_data
-from utils.slicing import get_slice_count, get_slices
+from utils.slicing import get_slice_count, get_slices, get_slice
 # 룸바는 26/27이 표준이다. 차차차는 28/30, 자이브 42/44, 삼바는 50/52, 파소도블레는 60/62 BPM이다. 숫자가 높을수록 빠르다.
 #
 # 왈츠는 30 BPM, 퀵스텝 50, 폭스트로트 30, 탱고 33/34이 표준으로 되어 있다. 소셜 리듬댄스는 26/50으로 폭이 넓다.
@@ -57,7 +57,7 @@ class SelfSupervisedDataset(Dataset):
                 except (RuntimeError, NoBackendError):
                     pass
 
-            if audio_duration is not None:
+            if audio_duration is not None and audio_duration < 61:
                 slice_count, slice_overlap = get_slice_count(audio_duration, audio_length)
 
                 for slice_index in range(slice_count):
@@ -76,41 +76,62 @@ class SelfSupervisedDataset(Dataset):
     def __len__(self):
         return len(self.audio_slices)
 
+    # def __getitem__(self, index):
+    #     audio_slice = self.audio_slices[index]
+    #     if "data" in audio_slice and "mask" in audio_slice:
+    #         # data와 mask가 이미 준비되어 있음
+    #         #print(1,audio_slice["data"], audio_slice["mask"])
+    #         return audio_slice["data"], audio_slice["mask"]
+
+    #     first_audio_slice_index = index
+    #     while first_audio_slice_index > 0 and self.audio_slices[first_audio_slice_index - 1]["path"] == audio_slice["path"]:
+    #         #print("loop", first_audio_slice_index, self.audio_slices[first_audio_slice_index - 1]["path"], audio_slice["path"])
+    #         first_audio_slice_index -= 1
+
+    #     first_audio_slice = self.audio_slices[first_audio_slice_index]
+    #     index_offset_from_first_slice = index - first_audio_slice_index
+
+    #     audio_file_path = audio_slice["path"]
+
+    #     try:
+    #         new_audio_slices, _, attention_masks = get_slices(
+    #             audio_file_path,
+    #             None,
+    #             self.audio_length,
+    #             self.sr,
+    #             self.augment
+    #         )
+
+    #         for slice_index_offset, new_audio_slice in enumerate(new_audio_slices):
+    #             attention_mask = attention_masks[slice_index_offset]
+    #             slice_index = first_audio_slice_index + slice_index_offset
+    #             self.audio_slices[slice_index]["data"] = new_audio_slice#.cpu().detach().numpy()
+    #             self.audio_slices[slice_index]["mask"] = attention_mask#.cpu().detach().numpy()
+
+    #         #print(2, self.audio_slices[index]["data"].shape, self.audio_slices[index]["mask"].shape)
+    #         return self.audio_slices[index]["data"], self.audio_slices[index]["mask"]
+    #     except RuntimeError:
+    #         pass
+
     def __getitem__(self, index):
         audio_slice = self.audio_slices[index]
-        if "data" in audio_slice and "mask" in audio_slice:
-            # data와 mask가 이미 준비되어 있음
-            #print(1,audio_slice["data"], audio_slice["mask"])
-            return audio_slice["data"], audio_slice["mask"]
-
-        first_audio_slice_index = index
-        while first_audio_slice_index > 0 and self.audio_slices[first_audio_slice_index - 1]["path"] == audio_slice["path"]:
-            first_audio_slice_index -= 1
-
-        first_audio_slice = self.audio_slices[first_audio_slice_index]
-        index_offset_from_first_slice = index - first_audio_slice_index
 
         audio_file_path = audio_slice["path"]
+        audio_start_time = audio_slice["start"]
 
-        try:
-            new_audio_slices, _, attention_masks = get_slices(
-                audio_file_path,
-                None,
-                self.audio_length,
-                self.sr,
-                self.augment
-            )
+        audio_slice, _, attention_mask = get_slice(
+            audio_file_path,
+            None,
+            self.audio_length,
+            self.sr,
+            self.augment,
+            audio_start_time
+        )
 
-            for slice_index_offset, new_audio_slice in enumerate(new_audio_slices):
-                attention_mask = attention_masks[slice_index_offset]
-                slice_index = first_audio_slice_index + slice_index_offset
-                self.audio_slices[slice_index]["data"] = new_audio_slice#.cpu().detach().numpy()
-                self.audio_slices[slice_index]["mask"] = attention_mask#.cpu().detach().numpy()
+        if torch.isnan(audio_slice).any():
+            print(audio_file_path, audio_slice)
 
-            #print(2, self.audio_slices[index]["data"].shape, self.audio_slices[index]["mask"].shape)
-            return self.audio_slices[index]["data"], self.audio_slices[index]["mask"]
-        except RuntimeError:
-            pass
+        return audio_slice, attention_mask, audio_file_path
 
 transforms_polarity = 0.8
 transforms_noise = 0.01

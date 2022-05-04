@@ -2,3 +2,4 @@ datapath/
 __pycache__/
 env
 audio_lengths.json
+*.pth

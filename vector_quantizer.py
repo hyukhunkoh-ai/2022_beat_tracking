@@ -15,6 +15,7 @@ class Wav2Vec2GumbelVectorQuantizer(nn.Module):
         self.codevectors = nn.Parameter(
             torch.FloatTensor(1, self.num_groups * self.num_vars, cdim // self.num_groups) # 1*640*128
         )
+        nn.init.uniform_(self.codevectors)
         self.weight_proj = nn.Linear(tcn_conv_dim, self.num_groups * self.num_vars) # 512 to 320*2
 
         # can be decayed for training

@@ -67,6 +67,76 @@ def slice_annotation(annotation, slice_start_times, audio_length, target_sr, sli
 
     return total_annotations
 
+def get_slice(audio_file_path, label_file_path, audio_length, sr, augment, audio_start_time):
+    loaded_audio, loaded_audio_length = load_audio(audio_file_path, sr)
+    loaded_annotation = None
+    attention_mask = None
+
+    if label_file_path is not None:
+        loaded_annotation = load_annotation(label_file_path)
+
+    if augment:
+        loaded_audio, loaded_annotation = apply_pre_augmentations(
+            loaded_audio,
+            loaded_annotation,
+            audio_length,
+            sr
+        )
+
+    target_audio_length = int(audio_length*sr)
+    if loaded_audio.size(dim=1) <= target_audio_length:
+        loaded_audio, attention_mask = pad(loaded_audio, audio_length, sr)
+        attention_mask = torch.ones(int(audio_length*sr))
+
+        if augment:
+            loaded_audio, loaded_annotation = apply_post_augmentations(
+                loaded_audio,
+                loaded_annotation,
+                sr
+            )
+
+        return loaded_audio, loaded_annotation, attention_mask
+    elif loaded_audio.size(dim=1) > target_audio_length:
+        audio_slices, slice_start_times, slice_overlap = slice_audio(
+            loaded_audio,
+            loaded_audio_length,
+            audio_length,
+            sr
+        )
+
+        attention_mask = torch.ones(int(audio_length*sr))
+
+        # if label_file_path is not None:
+        #     # todo: fix for labeled dataset
+        #     annotation_slices = slice_annotation(
+        #         loaded_annotation,
+        #         slice_start_times,
+        #         audio_length,
+        #         sr,
+        #         slice_overlap
+        #     )
+
+        slice_index = math.floor(sr * audio_start_time / target_audio_length)
+        loaded_audio = audio_slices[slice_index]
+
+        # loaded_annotation이 None일 경우 두번째 반환값은 None이 됨
+        if augment:
+            loaded_annotation = None
+
+            if label_file_path is not None:
+                loaded_annotation = annotation_slices[slice_index]
+
+            loaded_audio, loaded_annotation = apply_post_augmentations(
+                loaded_audio,
+                loaded_annotation,
+                sr
+            )
+
+            if label_file_path is not None:
+                annotation_slices[slice_index] = augmented_annotation
+
+    return loaded_audio, loaded_annotation, attention_mask
+
 def get_slices(audio_file_path, label_file_path, audio_length, sr, augment):
     audio_slices = []
     annotation_slices = []

@@ -285,17 +285,7 @@ class Music2VecModel(nn.Module):
         logits = logits / temperature # 첫번째는 유사도가 높아야함
         return logits
 
-    def calculate_loss(self, waveforms: Tensor, attention_mask=None) -> Tensor:
-        # to-do: add length
-        # sample_to_tcn을 feature extractor length 생성 추가
-        # calculate_loss에서 length 받아야함
-        # extract_features = extract_x
-        # sample_to_tcn = feature_extractor
-        # tcn_to_transformer = encoder (readout 뺐음)
-        # 헥심: length를 처리하고 받아야함
-        # sample_to_tcn, sample_to_transformer, mask_hidden_states는 반드시 length 정보가 들어가야함
-        # 다 하면 학습돌릴 수 있음
-
+    def calculate_loss(self, waveforms: Tensor, attention_mask=None, audio_file_paths=None) -> Tensor:
         lengths = None
         if attention_mask is not None:
             lengths = attention_mask.sum(-1)
@@ -315,7 +305,6 @@ class Music2VecModel(nn.Module):
                 attention_mask[mask_criterion, lengths] = 1
                 attention_mask = torch.cumsum(attention_mask, dim=-1)
 
-        # to-do: test 10초
         hidden_states, mask_time_indices = self._mask_hidden_states(transformer_x, attention_mask=attention_mask)
         encoder_outputs = self.transformer(hidden_states, attention_mask)
 
@@ -350,7 +339,6 @@ class Music2VecModel(nn.Module):
         diversity_loss_weight = 0.1
         num_codevectors = num_codevectors_per_group * num_codevector_groups
         diversity_loss = (num_codevectors - codevector_perplexity) / num_codevectors
-        #print(contrastive_loss, diversity_loss_weight * diversity_loss)
         loss = contrastive_loss + diversity_loss_weight * diversity_loss
 
         return loss

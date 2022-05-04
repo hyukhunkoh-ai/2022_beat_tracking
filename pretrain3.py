@@ -12,6 +12,7 @@ import datetime
 from dataset import SelfSupervisedDataset
 from models.self_supervised import Music2VecModel
 import numpy as np
+import gc
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -52,14 +53,13 @@ def pretrain(gpu, args, pretrain_dataset_list, num_epochs, bs, steps_per_epoch):
     model.cuda(gpu)
     ###############################################################
     # Wrap the model to each gpu
-    dist_model = nn.parallel.DistributedDataParallel(model,
-                                                device_ids=[gpu])
-    if os.path.isfile('./finetune_model_52.pth'):
+    dist_model = nn.parallel.DistributedDataParallel(model, device_ids=[gpu])
+    if os.path.isfile('./music2vec_pretrain.pth'):
         dist.barrier()
         if when_to_load[str(gpu)]:
             print('load successfully')
             map_location = {'cuda:%d' % 0: 'cuda:%d' % gpu}    
-            dist_model.module.load_state_dict(torch.load('./finetune_model_52.pth', map_location=map_location))
+            dist_model.module.load_state_dict(torch.load('./music2vec_pretrain.pth', map_location=map_location))
             when_to_load[str(gpu)] = False
 
     ################################################################
@@ -76,6 +76,7 @@ def pretrain(gpu, args, pretrain_dataset_list, num_epochs, bs, steps_per_epoch):
         batch_size=bs,
     ##############################
         shuffle=False,            #
+        num_workers=4,
     ##############################
         pin_memory=True,
     #############################
@@ -83,32 +84,32 @@ def pretrain(gpu, args, pretrain_dataset_list, num_epochs, bs, steps_per_epoch):
 
     start = datetime.datetime.now()
     total_step = len(train_loader)
+    best_trloss = 1000000
     total_loss = []
     best_epoch = 0
     for epoch in range(num_epochs):
         train_sampler.set_epoch(epoch)
         total_trloss = 0
         for i, batch in enumerate(train_loader):
-            inputs, attention_masks = batch
+            inputs, attention_masks, audio_file_paths = batch
 
             inputs = inputs.to(device)
             attention_masks = attention_masks.to(device)
 
             model.to(device)
             optimizer.zero_grad()
-            loss = model.calculate_loss(inputs, attention_masks)
+            loss = model.calculate_loss(inputs, attention_masks, audio_file_paths)
             total_loss.append(loss.item())
             loss.backward()
             optimizer.step()
             scheduler.step()
-            if gpu == 0:
+            if gpu == 10:
                 print('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}'.format(
                     epoch + 1, 
                     num_epochs, 
                     i + 1, 
                     total_step,
                     loss*10000)
-                    #np.mean(total_loss))
                 )
 
         if gpu == 0:
@@ -134,10 +135,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
     os.environ['CUDA_VISIBLE_DEVICES']= args.devices
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
     # memoization을 하게끔 만들었음에도 fma_30가 엄청 크기 때문에 데이터로딩이 오래걸리므로. 테스트 시 fma_30 dataset을 생략하는 것이 유리함
-    dataset_types = ["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "fma_30", "openmic_10"]
+    #dataset_types = ["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "fma_30", "openmic_10"]
     #dataset_types = ["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "openmic_10"]
+    dataset_types = ["fma_30"]
 
     pretrain_datasets = []
     num_files = 0

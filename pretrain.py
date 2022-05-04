@@ -7,8 +7,8 @@ from argparse import ArgumentParser
 from models.self_supervised import Music2VecModel
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-epochs = 100000
-bs = 2 # 5 * 4 = 20
+epochs = 1
+bs = 1 # 5 * 4 = 20
 
 # to-do:
 # dataloader
@@ -32,8 +32,9 @@ parser.add_argument('--lr', type=float, default=1e-3)
 args = parser.parse_args()
 
 # memoization을 하게끔 만들었음에도 fma_30가 엄청 크기 때문에 데이터로딩이 오래걸리므로. 테스트 시 fma_30 dataset을 생략하는 것이 유리함
-dataset_types = ["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "fma_30", "openmic_10"]
+#dataset_types = ["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "fma_30", "openmic_10"]
 #dataset_types = ["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "openmic_10"]
+dataset_types = ["openmic_10"]
 
 train_datasets = []
 num_files = 0
@@ -71,7 +72,7 @@ for epoch in range(epochs):
     total_loss = []
 
     for data in train_dataloader:
-        inputs, attention_masks = data
+        inputs, attention_masks, _ = data
 
         inputs = inputs.to(device)
         attention_masks = attention_masks.to(device)
@@ -83,6 +84,7 @@ for epoch in range(epochs):
         loss.backward()
         optim.step()
         scheduler.step()
+        break
     print(np.mean(total_loss))
 
 torch.save(model, 'model.pt')
