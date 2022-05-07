@@ -21,7 +21,7 @@ print('Current cuda device:', torch.cuda.current_device())
 print('Count of using GPUs:', torch.cuda.device_count())
 
 #학습
-when_to_load = {'0':True,'1':True,'2':True,'3':True}
+when_to_load = {'0':True, '1':True, '2':True, '3':True}
 
 def pretrain(gpu, args, pretrain_dataset_list, num_epochs, bs, steps_per_epoch):
     
@@ -85,10 +85,10 @@ def pretrain(gpu, args, pretrain_dataset_list, num_epochs, bs, steps_per_epoch):
     start = datetime.datetime.now()
     total_step = len(train_loader)
     best_trloss = 1000000
-    total_loss = []
     best_epoch = 0
     for epoch in range(num_epochs):
         train_sampler.set_epoch(epoch)
+        total_loss = []
         total_trloss = 0
         for i, batch in enumerate(train_loader):
             inputs, attention_masks, audio_file_paths = batch
@@ -103,13 +103,13 @@ def pretrain(gpu, args, pretrain_dataset_list, num_epochs, bs, steps_per_epoch):
             loss.backward()
             optimizer.step()
             scheduler.step()
-            if gpu == 10:
+            if gpu == 1:
                 print('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}'.format(
                     epoch + 1, 
                     num_epochs, 
                     i + 1, 
                     total_step,
-                    loss*10000)
+                    loss)
                 )
 
         if gpu == 0:
@@ -138,9 +138,9 @@ if __name__ == '__main__':
     os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
     # memoization을 하게끔 만들었음에도 fma_30가 엄청 크기 때문에 데이터로딩이 오래걸리므로. 테스트 시 fma_30 dataset을 생략하는 것이 유리함
-    #dataset_types = ["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "fma_30", "openmic_10"]
+    dataset_types = ["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "fma_30", "openmic_10"]
     #dataset_types = ["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "openmic_10"]
-    dataset_types = ["fma_30"]
+    #dataset_types = ["60_excerpts_30"]
 
     pretrain_datasets = []
     num_files = 0
@@ -155,7 +155,7 @@ if __name__ == '__main__':
 
     pretrain_dataset_list = torch.utils.data.ConcatDataset(pretrain_datasets)
 
-    num_epochs = 4
+    num_epochs = 10000
     bs = 2
     steps_per_epoch = num_files // bs + 1
 

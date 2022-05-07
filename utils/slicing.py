@@ -1,7 +1,7 @@
 import torch
 import math
 from utils.data_loading import load_audio, load_annotation
-from utils.augmentation import apply_pre_augmentations, apply_post_augmentations
+from utils.augmentation import apply_augmentations
 from utils.padding import pad
 
 def get_slice_count(audio_length, desired_audio_length):
@@ -76,7 +76,7 @@ def get_slice(audio_file_path, label_file_path, audio_length, sr, augment, audio
         loaded_annotation = load_annotation(label_file_path)
 
     if augment:
-        loaded_audio, loaded_annotation = apply_pre_augmentations(
+        loaded_audio, loaded_annotation = apply_augmentations(
             loaded_audio,
             loaded_annotation,
             audio_length,
@@ -86,14 +86,9 @@ def get_slice(audio_file_path, label_file_path, audio_length, sr, augment, audio
     target_audio_length = int(audio_length*sr)
     if loaded_audio.size(dim=1) <= target_audio_length:
         loaded_audio, attention_mask = pad(loaded_audio, audio_length, sr)
-        attention_mask = torch.ones(int(audio_length*sr))
-
-        if augment:
-            loaded_audio, loaded_annotation = apply_post_augmentations(
-                loaded_audio,
-                loaded_annotation,
-                sr
-            )
+        #print(attention_mask.shape)
+        #attention_mask = torch.ones(int(audio_length*sr))
+        #print(attention_mask.shape)
 
         return loaded_audio, loaded_annotation, attention_mask
     elif loaded_audio.size(dim=1) > target_audio_length:
@@ -125,15 +120,6 @@ def get_slice(audio_file_path, label_file_path, audio_length, sr, augment, audio
 
             if label_file_path is not None:
                 loaded_annotation = annotation_slices[slice_index]
-
-            loaded_audio, loaded_annotation = apply_post_augmentations(
-                loaded_audio,
-                loaded_annotation,
-                sr
-            )
-
-            if label_file_path is not None:
-                annotation_slices[slice_index] = augmented_annotation
 
     return loaded_audio, loaded_annotation, attention_mask
 

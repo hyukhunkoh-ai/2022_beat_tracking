@@ -18,6 +18,6 @@ def pad(x, max_length, sr):
     padding_shape = (0, difference)
 
     attention_mask = nn.functional.pad(attention_mask, padding_shape)
-    padded_x = nn.functional.pad(x.squeeze(), padding_shape, "constant", value=-1).unsqueeze(0)
+    padded_x = nn.functional.pad(x.squeeze(), padding_shape, "constant", value=0).unsqueeze(0)
 
     return padded_x, attention_mask

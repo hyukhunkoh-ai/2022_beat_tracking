@@ -62,13 +62,13 @@ class Music2VecModel(nn.Module):
         # NOTE!!!! 마지막 block에서 padding을 하나 줄임 (1283 -> 1280)
         # out_features=768는 transformer의 embedding size
         # todo: change stride, from 5?
-        shapes = [
-            (32, 10, 11),
-            (64, 3, 5),
-            (128, 3, 2),
+        shapes = [ # 220
+            (32, 10, 3),
+            (64, 3, 3),
+            (128, 3, 3),
             (256, 3, 2),
-            (256, 3, 1),
-            (512, 2, 1),
+            (256, 3, 2),
+            (512, 2, 2),
             (512, 2, 1)
         ]
 
@@ -199,7 +199,6 @@ class Music2VecModel(nn.Module):
             attention_mask=(1 - attention_mask),
             min_masks=2,
         )
-        #print(hidden_states.shape, mask_time_indices.shape)
         mask_time_indices = torch.tensor(mask_time_indices, device=hidden_states.device, dtype=torch.bool)
         hidden_states[mask_time_indices] = self.masked_spec_embed.to(hidden_states.dtype)
 
@@ -228,6 +227,7 @@ class Music2VecModel(nn.Module):
     def _sample_negatives(
         features: torch.FloatTensor, num_negatives: int, attention_mask: Optional[torch.LongTensor] = None
     ):
+        # attention mask 000011
         attention_mask = 1 - attention_mask
         batch_size, sequence_length, hidden_size = features.shape
         if sequence_length <= 1:
@@ -272,7 +272,7 @@ class Music2VecModel(nn.Module):
     @staticmethod
     def compute_contrastive_logits(
             target_features: torch.FloatTensor, # 1,b,l,256
-            negative_features: torch.FloatTensor,
+            negative_features: torch.FloatTensor, # 100,b,l,256
             predicted_features: torch.FloatTensor,  # b,l,256
             temperature=1.0,
     ):
@@ -294,8 +294,6 @@ class Music2VecModel(nn.Module):
         transformer_x = self.tcn_to_transformer(extract_x)
 
         if attention_mask is not None:
-            lengths = lengths.squeeze()
-
             batch_size, sequence_length, _ = extract_x.size()
             attention_mask = torch.zeros((batch_size, sequence_length), dtype=torch.int32, device=device)
 
@@ -305,8 +303,10 @@ class Music2VecModel(nn.Module):
                 attention_mask[mask_criterion, lengths] = 1
                 attention_mask = torch.cumsum(attention_mask, dim=-1)
 
+        #torch.set_printoptions(edgeitems=20)
         hidden_states, mask_time_indices = self._mask_hidden_states(transformer_x, attention_mask=attention_mask)
         encoder_outputs = self.transformer(hidden_states, attention_mask)
+        #torch.set_printoptions(edgeitems=3)
 
         transformer_features = self.project_hid(encoder_outputs)
 
@@ -317,21 +317,26 @@ class Music2VecModel(nn.Module):
         negative_quantized_features = self._sample_negatives(
             quantized_features, num_negatives, attention_mask=attention_mask
         )
+        # negative_quantized_features.shape = torch.Size([100, 1, 1280, 256])
 
         logits = self.compute_contrastive_logits(
             quantized_features[None, :],
             negative_quantized_features,
             transformer_features,
-            0.1)
+            0.5) # 원래값: 0.1
 
         neg_is_pos = (quantized_features == negative_quantized_features).all(-1)
 
         if neg_is_pos.any():
             logits[1:][neg_is_pos] = float("-inf") # k,b,l
 
-        preds = logits.transpose(0, 2).reshape(-1, logits.size(0))
-
-        target = ((1 - mask_time_indices.long()) * -100).transpose(0, 1).flatten()
+        preds = logits.transpose(0, 2).reshape(-1, logits.size(0)) # torch.Size([101, b, 1280]) -> 1280, b, 101 -> 1280*b, 101
+        target = ((1 - mask_time_indices.long()) * -100).transpose(0, 1).flatten() # b, 1280 -> 1280, b -> 1280*b 값은 indice 제외 -100
+        #print(preds, preds.shape)
+        torch.set_printoptions(edgeitems=200)
+        #print(target, target.shape)
+        torch.set_printoptions(edgeitems=3)
+        #print((torch.abs(target + 100) > 0.1).any())
         contrastive_loss = nn.functional.cross_entropy(preds.float(), target, reduction="sum")
         
         num_codevectors_per_group = 320
@@ -344,8 +349,6 @@ class Music2VecModel(nn.Module):
         return loss
 
     def sample_to_tcn(self, x, length):
-        #length 추가
-
         #########################
         # Pre-TCN
         # torch.Size([2, 1, 282240]) (batch, feature, audio sample)
@@ -375,7 +378,9 @@ class Music2VecModel(nn.Module):
         #print("Projection (TCN -> Transformer)", x.shape)
 
         x = self.projection_layer_norm(x)
+        #print(x, x.shape)
         x = self.projection(x)
+        #print(x, x.shape)
         x = self.projection_dropout(x)
 
         return x
@@ -430,6 +435,7 @@ class Music2VecModel(nn.Module):
             attention_mask = attention_mask.expand(
                 attention_mask.shape[0], 1, attention_mask.shape[-1], attention_mask.shape[-1]
             )
+
         # length is not none 추가
         if not self.layer_norm_first:
             x = self.attention_layer_norm(x)
