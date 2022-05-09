@@ -4,3 +4,4 @@ env
 audio_lengths.json
 *.pth
 *.pt
+pretrain_output.txt

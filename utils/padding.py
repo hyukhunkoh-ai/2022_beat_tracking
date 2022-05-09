@@ -12,7 +12,7 @@ def pad(x, max_length, sr):
 
     num_samples = x.shape[1]
     target_samples = max_length*sr
-    attention_mask = torch.ones(num_samples, dtype=torch.int32)
+    attention_mask = torch.ones(num_samples, dtype=torch.float32)
 
     difference = int(target_samples - num_samples)
     padding_shape = (0, difference)

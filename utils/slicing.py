@@ -99,7 +99,7 @@ def get_slice(audio_file_path, label_file_path, audio_length, sr, augment, audio
             sr
         )
 
-        attention_mask = torch.ones(int(audio_length*sr))
+        attention_mask = torch.ones(int(audio_length*sr), dtype=torch.float32)
 
         # if label_file_path is not None:
         #     # todo: fix for labeled dataset

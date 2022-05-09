@@ -295,15 +295,15 @@ class Music2VecModel(nn.Module):
 
         if attention_mask is not None:
             batch_size, sequence_length, _ = extract_x.size()
-            attention_mask = torch.zeros((batch_size, sequence_length), dtype=torch.int32, device=device)
+            attention_mask = torch.zeros((batch_size, sequence_length), dtype=torch.int32, device=attention_mask.device)
 
             mask_criterion = torch.lt(lengths, sequence_length)
             mask_criterion_sum = mask_criterion.sum()
             if mask_criterion_sum != 0:
-                attention_mask[mask_criterion, lengths] = 1
+                attention_mask[:, lengths - 1] = 1
+                attention_mask[:, sequence_length - 1] = 0
                 attention_mask = torch.cumsum(attention_mask, dim=-1)
 
-        #torch.set_printoptions(edgeitems=20)
         hidden_states, mask_time_indices = self._mask_hidden_states(transformer_x, attention_mask=attention_mask)
         encoder_outputs = self.transformer(hidden_states, attention_mask)
         #torch.set_printoptions(edgeitems=3)
