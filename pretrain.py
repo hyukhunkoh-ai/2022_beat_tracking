@@ -13,6 +13,7 @@ from dataset import SelfSupervisedDataset
 from models.self_supervised import Music2VecModel
 import numpy as np
 import gc
+import glob
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -54,13 +55,18 @@ def pretrain(gpu, args, pretrain_dataset_list, num_epochs, bs, steps_per_epoch):
     ###############################################################
     # Wrap the model to each gpu
     dist_model = nn.parallel.DistributedDataParallel(model, device_ids=[gpu])
-    if os.path.isfile('./music2vec_pretrain.pth'):
+    state_dicts = glob.glob('./music2vec_pretrain_*.pth')
+    #if os.path.isfile('./music2vec_pretrain.pth'):
+    start_epoch = 0
+    if len(state_dicts) > 0:
+        state_dict = state_dicts[-1]
+        start_epoch = int(''.join(filter(str.isdigit, state_dict[10:]))) + 1
         dist.barrier()
         if when_to_load[str(gpu)]:
-            print('load successfully')
             map_location = {'cuda:%d' % 0: 'cuda:%d' % gpu}    
-            dist_model.module.load_state_dict(torch.load('./music2vec_pretrain.pth', map_location=map_location))
+            dist_model.module.load_state_dict(torch.load(state_dict, map_location=map_location))
             when_to_load[str(gpu)] = False
+        print('loaded {state_dict} successfully')
 
     ################################################################
     # assign different slice of data per the process 
@@ -86,7 +92,7 @@ def pretrain(gpu, args, pretrain_dataset_list, num_epochs, bs, steps_per_epoch):
     total_step = len(train_loader)
     best_trloss = 1000000
     best_epoch = 0
-    for epoch in range(num_epochs):
+    for epoch in range(start_epoch, num_epochs):
         train_sampler.set_epoch(epoch)
         total_loss = []
         total_trloss = 0
@@ -103,7 +109,7 @@ def pretrain(gpu, args, pretrain_dataset_list, num_epochs, bs, steps_per_epoch):
             loss.backward()
             optimizer.step()
             scheduler.step()
-            if gpu == 1 and i % 100 == 0:
+            if gpu == 1:# and i % 100 == 0:
                 print('Epoch [{}/{}], Step [{}/{}], Loss: {:.4f}'.format(
                     epoch + 1, 
                     num_epochs, 
@@ -115,12 +121,13 @@ def pretrain(gpu, args, pretrain_dataset_list, num_epochs, bs, steps_per_epoch):
         if gpu == 0:
             print("Total loss:", np.mean(total_loss), file=open("pretrain_output.txt", "a"))
             print("Best epoch:", best_epoch, file=open("pretrain_output.txt", "a"))
-            if np.mean(total_loss) < best_trloss:
-                print(epoch)
-                print('------------save & loss below---------------')
-                best_epoch = epoch
-                best_trloss = np.mean(total_loss)
-                torch.save(dist_model.module.state_dict(), f'music2vec_pretrain_{best_epoch}.pth')
+            #if np.mean(total_loss) < best_trloss:
+            print(epoch)
+            print('------------save & loss below---------------')
+            #best_epoch = epoch
+            #best_trloss = np.mean(total_loss)
+            #torch.save(dist_model.module.state_dict(), f'music2vec_pretrain_{best_epoch}.pth')
+            torch.save(dist_model.module.state_dict(), f'music2vec_pretrain_{epoch}.pth')
 
     if gpu == 0:
         print("Training complete in: " + str(datetime.datetime.now() - start))
@@ -140,7 +147,7 @@ if __name__ == '__main__':
     # memoization을 하게끔 만들었음에도 fma_30가 엄청 크기 때문에 데이터로딩이 오래걸리므로. 테스트 시 fma_30 dataset을 생략하는 것이 유리함
     dataset_types = ["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "fma_30", "openmic_10"]
     #dataset_types = ["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "fma_30"]
-    #dataset_types = ["fma_30"]
+    #dataset_types = ["60_excerpts_30", "openmic_10"]
 
     pretrain_datasets = []
     num_files = 0

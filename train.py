@@ -6,7 +6,7 @@ from models.self_supervised import Music2VecModel
 from models.loss import RegressionModel, ClassificationModel, FocalLoss
 
 parser = ArgumentParser()
-parser.add_argument('--ballroom_dir', type=str, default='./datapath/ballroom')
+parser.add_argument('--ballroom_dir', type=str, default='/beat_tracking/label/train/ballroom')
 parser.add_argument('--epochs', type=int, default=100)
 parser.add_argument('--lr', type=float, default=1e-3)
 
@@ -55,6 +55,8 @@ for epoch in range(args.epochs):
     running_loss = 0.0
     for index, data in enumerate(train_dataloader, 0):
         inputs, annotations = data
+        print(annotations)
+        raise ValueError
         inputs = inputs.to(device)
         annotations = annotations.to(device)
 

@@ -1,12 +1,12 @@
-from glob import glob
-import os
+# from glob import glob
+# import os
 
-paths = list(glob(os.path.join('./datapath/ballroom', 'label', '*.beats')))
+# paths = list(glob(os.path.join('./datapath/ballroom', 'label', '*.beats')))
 
-try:
-    os.mkdir('./datapath/ballroom/new_label')
-except:
-    print("already exists")
+# try:
+#     os.mkdir('./datapath/ballroom/new_label')
+# except:
+#     print("already exists")
 
 data_paths = []
 
@@ -33,6 +33,6 @@ for path in paths:
     else:
         print("filtered" + new_data)
 
-with open('./datapath/ballroom/new_data.txt', 'w') as fp:
+with open('/beat_tracking/label/train/ballroom/new_data.txt', 'w') as fp:
     for data_path in data_paths:
         fp.write(data_path + "\n")

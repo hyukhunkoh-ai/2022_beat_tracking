@@ -242,6 +242,9 @@ class Music2VecModel(nn.Module):
             sampled_negative_indices = []
             for batch_idx in range(batch_size):
                 high = attention_mask[batch_idx].sum() - 1 if attention_mask is not None else sequence_length - 1
+                if high <= 0:
+                    high = sequence_length - 1
+
                 sampled_indices_slice = torch.randint(
                     0, high, size=(num_negatives * sequence_length,), device=features.device
                 )
@@ -300,9 +303,8 @@ class Music2VecModel(nn.Module):
             mask_criterion = torch.lt(lengths, sequence_length)
             mask_criterion_sum = mask_criterion.sum()
             if mask_criterion_sum != 0:
-                attention_mask[:, lengths - 1] = 1
-                attention_mask[:, sequence_length - 1] = 0
-                attention_mask = torch.cumsum(attention_mask, dim=-1)
+                for item_index in range(batch_size):
+                    attention_mask[item_index, lengths[item_index]:] = 1
 
         hidden_states, mask_time_indices = self._mask_hidden_states(transformer_x, attention_mask=attention_mask)
         encoder_outputs = self.transformer(hidden_states, attention_mask)

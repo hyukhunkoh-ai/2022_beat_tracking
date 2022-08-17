@@ -34,7 +34,7 @@ args = parser.parse_args()
 # memoization을 하게끔 만들었음에도 fma_30가 엄청 크기 때문에 데이터로딩이 오래걸리므로. 테스트 시 fma_30 dataset을 생략하는 것이 유리함
 #dataset_types = ["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "fma_30", "openmic_10"]
 #dataset_types = ["60_excerpts_30", "extended_ballroom_30", "acm_mirum_tempo_30_60", "openmic_10"]
-dataset_types = ["openmic_10"]
+dataset_types = ["60_excerpts_30"]
 
 train_datasets = []
 num_files = 0
